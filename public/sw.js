@@ -1,27 +1,28 @@
-const CACHE_NAME = 'daily-checkin-v8';
+const CACHE_NAME = 'daily-checkin-v10';
 
-// 需要预缓存的核心资源
-const STATIC_ASSETS = [
+// 需要预缓存的所有页面路由
+const PRECACHE_ROUTES = [
   '/',
   '/stats',
-  '/manifest.json',
+  '/data',
 ];
 
-// 安装事件 - 预缓存核心资源，但不立即激活
+// 安装事件 - 预缓存所有页面
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
+      return cache.addAll(PRECACHE_ROUTES);
+    }).then(() => {
+      // 安装完成后立即激活
+      return self.skipWaiting();
     })
   );
-  // 不调用 skipWaiting()，等待手动触发
 });
 
-// 激活事件 - 清理旧缓存并立即接管
+// 激活事件 - 清理旧缓存并接管所有客户端
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     Promise.all([
-      // 清理旧版本缓存
       caches.keys().then((cacheNames) => {
         return Promise.all(
           cacheNames
@@ -29,13 +30,12 @@ self.addEventListener('activate', (event) => {
             .map((name) => caches.delete(name))
         );
       }),
-      // 立即接管所有客户端
       self.clients.claim()
     ])
   );
 });
 
-// 请求拦截 - 绝对缓存优先策略，确保秒开
+// 请求拦截 - 缓存优先策略，确保离线可用
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
@@ -50,11 +50,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 所有请求：绝对缓存优先，有缓存立即返回，不等待网络
+  // 所有请求：缓存优先，有缓存立即返回，不等待网络
   event.respondWith(
     caches.match(request).then((cached) => {
       if (cached) {
-        // 有缓存，立即返回，后台静默更新（不阻塞）
+        // 有缓存，立即返回，后台静默更新
         fetch(request)
           .then((response) => {
             if (response.ok) {
@@ -84,7 +84,6 @@ self.addEventListener('fetch', (event) => {
         .catch(() => {
           // 网络失败且无缓存
           if (request.mode === 'navigate') {
-            // 导航请求，尝试返回首页缓存
             return caches.match('/').then((fallback) => {
               return fallback || new Response('离线状态，请稍后重试', {
                 status: 503,

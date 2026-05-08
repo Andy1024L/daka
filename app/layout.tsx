@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { UpdatePrompt } from '@/components/update-prompt'
+import { ServiceWorkerRegistration } from '@/components/service-worker-registration'
 import './globals.css'
 
 const _geist = Geist({ subsets: ["latin"] });
@@ -51,6 +52,7 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" className="bg-background">
       <body className="font-sans antialiased">
+        <ServiceWorkerRegistration />
         <UpdatePrompt />
         {children}
         {process.env.NODE_ENV === 'production' && <Analytics />}
