@@ -1,21 +1,17 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import { useRouter } from "next/navigation"
-import { Download, Upload, Trash2, ChevronRight } from "lucide-react"
+import { Download, Upload, Trash2 } from "lucide-react"
 import { BottomNav } from "@/components/bottom-nav"
 import { SuccessToast } from "@/components/success-toast"
-import { getRecords, downloadXLSX, importFromXLSX, clearRecords } from "@/lib/storage"
+import { getRecords, deleteRecord, downloadXLSX, importFromXLSX, clearRecords } from "@/lib/storage"
 import type { CheckInRecord } from "@/types"
 import { Button } from "@/components/ui/button"
 
 export default function DataPage() {
-  const router = useRouter()
   const [records, setRecords] = useState<CheckInRecord[]>([])
   const [toast, setToast] = useState({ visible: false, message: "" })
   const [showConfirm, setShowConfirm] = useState(false)
-  const [filter, setFilter] = useState<"all" | "锻炼" | "拉伸">("all")
-  const [searchDate, setSearchDate] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -59,24 +55,24 @@ export default function DataPage() {
     showToast("数据已清除")
   }
 
-  // 格式化时间
+  const handleDeleteRecord = (id: string) => {
+    const success = deleteRecord(id)
+    if (success) {
+      setRecords(getRecords())
+      showToast("记录已删除")
+    }
+  }
+
+  const handleEditRecord = (id: string) => {
+    window.location.href = `/data/${id}`
+  }
+
   const formatTime = (timestamp: number) => {
     const date = new Date(timestamp)
     return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`
   }
 
-  // 筛选记录
-  const filteredRecords = records
-    .filter(r => {
-      if (filter !== "all" && r.category !== filter) return false
-      if (searchDate && !r.date.includes(searchDate)) return false
-      return true
-    })
-    .sort((a, b) => b.timestamp - a.timestamp)
-
-  const navigateToEdit = (id: string) => {
-    router.push(`/data/${id}`)
-  }
+  const sortedRecords = records.sort((a, b) => b.timestamp - a.timestamp)
 
   return (
     <main className="min-h-screen bg-background pb-24">
@@ -87,7 +83,6 @@ export default function DataPage() {
       </header>
 
       <div className="max-w-md mx-auto px-4 py-4 space-y-4">
-        {/* 数据操作 */}
         <div className="bg-card rounded-2xl p-4 border border-border shadow-sm">
           <h2 className="text-sm font-medium text-muted-foreground mb-3">数据管理</h2>
           <div className="grid grid-cols-2 gap-2">
@@ -146,32 +141,28 @@ export default function DataPage() {
           />
         </div>
 
-
-
-        {/* 记录列表 */}
         <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-border flex items-center justify-between">
             <h2 className="text-sm font-medium text-muted-foreground">
               记录列表
             </h2>
             <span className="text-xs text-muted-foreground">
-              共 {filteredRecords.length} 条
+              共 {sortedRecords.length} 条
             </span>
           </div>
 
           <div className="max-h-[50vh] overflow-y-auto divide-y divide-border">
-            {filteredRecords.length === 0 ? (
+            {sortedRecords.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground text-sm">
                 暂无记录
               </div>
             ) : (
-              filteredRecords.map((record) => (
-                <button
+              sortedRecords.map((record) => (
+                <div
                   key={record.id}
-                  onClick={() => navigateToEdit(record.id)}
-                  className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors text-left active:bg-muted"
+                  className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-1">
                     <div
                       className={`
                         w-10 h-10 rounded-xl flex items-center justify-center text-lg font-bold
@@ -192,8 +183,25 @@ export default function DataPage() {
                       </div>
                     </div>
                   </div>
-                  <ChevronRight className="w-5 h-5 text-muted-foreground" />
-                </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleEditRecord(record.id)
+                    }}
+                    className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors active:scale-90"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleDeleteRecord(record.id)
+                    }}
+                    className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors active:scale-90"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               ))
             )}
           </div>

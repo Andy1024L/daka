@@ -45,7 +45,7 @@ export default function EditRecordPage({ params }: { params: Promise<{ id: strin
     const success = updateRecord(id, { date, duration })
     if (success) {
       showToast("保存成功")
-      setTimeout(() => router.push("/data"), 500)
+      setTimeout(() => { window.location.href = "/data" }, 500)
     } else {
       showToast("保存失败")
     }
@@ -55,14 +55,14 @@ export default function EditRecordPage({ params }: { params: Promise<{ id: strin
     const success = deleteRecord(id)
     if (success) {
       showToast("已删除")
-      setTimeout(() => router.push("/data"), 500)
+      setTimeout(() => { window.location.href = "/data" }, 500)
     } else {
       showToast("删除失败")
     }
   }
 
   const goBack = () => {
-    router.push("/data")
+    window.location.href = "/data"
   }
 
   if (isLoading) {
