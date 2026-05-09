@@ -1,14 +1,11 @@
 "use client"
 
-import { useState, useEffect } from "react"
 import { Home, BarChart3, Database } from "lucide-react"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 
 export function BottomNav() {
-  const [pathname, setPathname] = useState("/")
-
-  useEffect(() => {
-    setPathname(window.location.pathname)
-  }, [])
+  const pathname = usePathname()
 
   const links = [
     { href: "/", icon: Home, label: "打卡" },
@@ -22,7 +19,7 @@ export function BottomNav() {
         {links.map(({ href, icon: Icon, label }) => {
           const isActive = pathname === href || (href !== "/" && pathname.startsWith(href))
           return (
-            <a
+            <Link
               key={href}
               href={href}
               className={`
@@ -30,10 +27,11 @@ export function BottomNav() {
                 transition-all duration-200
                 ${isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground/70"}
               `}
+              replace
             >
               <Icon className={`w-6 h-6 transition-transform ${isActive ? "scale-110" : ""}`} />
               <span className={`text-xs ${isActive ? "font-semibold" : "font-medium"}`}>{label}</span>
-            </a>
+            </Link>
           )
         })}
       </div>

@@ -1,41 +1,53 @@
-const CACHE_NAME = 'daily-checkin-v13';
-const STATIC_CACHE_NAME = 'daily-checkin-static-v13';
+const CACHE_VERSION = 'v14';
+const STATIC_CACHE = `static-${CACHE_VERSION}`;
+const DYNAMIC_CACHE = `dynamic-${CACHE_VERSION}`;
 
-// 需要预缓存的静态路由
-const PRECACHE_ROUTES = [
+// 核心资源列表
+const CORE_ASSETS = [
   '/',
   '/stats',
   '/data',
+  '/manifest.json',
+  '/icon-192.png',
+  '/icon-512.png',
 ];
 
-// 安装事件 - 预缓存核心资源
+// 安装阶段 - 缓存核心资源
 self.addEventListener('install', (event) => {
+  console.log('[SW] Installing...');
   event.waitUntil(
-    caches.open(STATIC_CACHE_NAME).then((cache) => {
-      return cache.addAll(PRECACHE_ROUTES);
-    }).then(() => {
-      return self.skipWaiting();
-    })
+    caches.open(STATIC_CACHE)
+      .then((cache) => {
+        console.log('[SW] Caching core assets');
+        return cache.addAll(CORE_ASSETS);
+      })
+      .then(() => self.skipWaiting())
   );
 });
 
-// 激活事件 - 清理旧缓存
+// 激活阶段 - 清理旧缓存
 self.addEventListener('activate', (event) => {
+  console.log('[SW] Activating...');
   event.waitUntil(
-    Promise.all([
-      caches.keys().then((cacheNames) => {
+    caches.keys()
+      .then((keys) => {
         return Promise.all(
-          cacheNames
-            .filter((name) => name !== CACHE_NAME && name !== STATIC_CACHE_NAME)
-            .map((name) => caches.delete(name))
+          keys
+            .filter((key) => key !== STATIC_CACHE && key !== DYNAMIC_CACHE)
+            .map((key) => {
+              console.log('[SW] Removing old cache:', key);
+              return caches.delete(key);
+            })
         );
-      }),
-      self.clients.claim()
-    ])
+      })
+      .then(() => {
+        console.log('[SW] Claiming clients');
+        return self.clients.claim();
+      })
   );
 });
 
-// Fetch 事件 - Cache-First 策略
+// 请求拦截
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
@@ -45,51 +57,71 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 跳过非 GET 请求
-  if (request.method !== 'GET') {
+  const isNavigate = request.mode === 'navigate';
+  const isGet = request.method === 'GET';
+
+  // 对于导航请求（页面切换），使用缓存优先
+  if (isNavigate && isGet) {
+    event.respondWith(
+      caches.match(request)
+        .then((cached) => {
+          if (cached) {
+            // 返回缓存，同时更新缓存
+            fetchAndCache(request);
+            return cached;
+          }
+
+          // 没有缓存，尝试网络
+          return fetchAndCache(request);
+        })
+        .catch(() => {
+          // 网络失败，返回首页缓存作为后备
+          return caches.match('/').then((fallback) => {
+            if (fallback) {
+              return fallback;
+            }
+            return new Response('离线模式', {
+              status: 503,
+              statusText: 'Service Unavailable'
+            });
+          });
+        })
+    );
     return;
   }
 
-  const isNavigate = request.mode === 'navigate';
-
-  event.respondWith(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.match(request).then((cachedResponse) => {
-        // 如果有缓存，立即返回
-        if (cachedResponse) {
-          // 后台更新缓存（不阻塞）
-          fetch(request).then((networkResponse) => {
-            if (networkResponse.ok) {
-              cache.put(request, networkResponse.clone());
-            }
-          }).catch(() => {});
-          return cachedResponse;
+  // 对于其他资源，使用缓存优先策略
+  if (isGet) {
+    event.respondWith(
+      caches.match(request).then((cached) => {
+        if (cached) {
+          return cached;
         }
-
-        // 无缓存，尝试网络
-        return fetch(request).then((networkResponse) => {
-          if (networkResponse.ok) {
-            cache.put(request, networkResponse.clone());
-          }
-          return networkResponse;
-        }).catch(() => {
-          // 网络失败
-          if (isNavigate) {
-            return caches.match('/').then((fallback) => {
-              return fallback || new Response('离线状态', {
-                status: 503,
-                headers: { 'Content-Type': 'text/html; charset=utf-8' }
-              });
-            });
-          }
-          return new Response('Offline', { status: 503 });
-        });
-      });
-    })
-  );
+        return fetchAndCache(request);
+      })
+    );
+  }
 });
 
-// 监听来自页面的消息
+// 获取并缓存
+function fetchAndCache(request) {
+  return fetch(request)
+    .then((response) => {
+      if (response.ok) {
+        const responseClone = response.clone();
+        caches.open(DYNAMIC_CACHE).then((cache) => {
+          cache.put(request, responseClone);
+        });
+      }
+      return response;
+    })
+    .catch((error) => {
+      console.error('[SW] Fetch failed:', error);
+      throw error;
+    });
+}
+
+// 处理来自页面的消息
 self.addEventListener('message', (event) => {
   if (event.data === 'skipWaiting') {
     self.skipWaiting();
