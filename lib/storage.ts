@@ -19,12 +19,13 @@ function migrateRecord(record: CheckInRecord): CheckInRecord {
   return record
 }
 
-// 生成递增 ID: YYYYMMDD-序号
+// 生成唯一 ID: YYYYMMDD-序号-时间戳后4位
 function generateId(records: CheckInRecord[], date: string): string {
   const datePrefix = date.replace(/-/g, "")
   const todayRecords = records.filter(r => r.id.startsWith(datePrefix))
   const nextNum = todayRecords.length + 1
-  return `${datePrefix}-${String(nextNum).padStart(3, "0")}`
+  const timestamp = Date.now() % 10000
+  return `${datePrefix}-${String(nextNum).padStart(3, "0")}-${timestamp}`
 }
 
 // 格式化时间戳为 HH:MM:SS
