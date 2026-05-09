@@ -7,6 +7,7 @@ import { SuccessToast } from "@/components/success-toast"
 import { getRecords, deleteRecord, downloadXLSX, importFromXLSX, clearRecords } from "@/lib/storage"
 import type { CheckInRecord } from "@/types"
 import { Button } from "@/components/ui/button"
+import { usePrefetchEditPages } from "@/hooks/use-prefetch-edit-pages"
 
 export default function DataPage() {
   const [records, setRecords] = useState<CheckInRecord[]>([])
@@ -17,6 +18,8 @@ export default function DataPage() {
   useEffect(() => {
     setRecords(getRecords())
   }, [])
+
+  usePrefetchEditPages()
 
   const showToast = useCallback((message: string) => {
     setToast({ visible: true, message })
@@ -64,7 +67,7 @@ export default function DataPage() {
   }
 
   const handleEditRecord = (id: string) => {
-    window.location.href = `/data/${id}`
+    window.location.href = `/edit/${id}`
   }
 
   const formatTime = (timestamp: number) => {
