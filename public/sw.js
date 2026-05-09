@@ -1,5 +1,5 @@
-const CACHE_NAME = 'daily-checkin-v12';
-const STATIC_CACHE_NAME = 'daily-checkin-static-v12';
+const CACHE_NAME = 'daily-checkin-v13';
+const STATIC_CACHE_NAME = 'daily-checkin-static-v13';
 
 // 需要预缓存的静态路由
 const PRECACHE_ROUTES = [
@@ -8,6 +8,7 @@ const PRECACHE_ROUTES = [
   '/data',
 ];
 
+// 安装事件 - 预缓存核心资源
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(STATIC_CACHE_NAME).then((cache) => {
@@ -18,6 +19,7 @@ self.addEventListener('install', (event) => {
   );
 });
 
+// 激活事件 - 清理旧缓存
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     Promise.all([
@@ -33,7 +35,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Stale-While-Revalidate策略
+// Fetch 事件 - Cache-First 策略
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
@@ -43,7 +45,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 跳过非GET请求
+  // 跳过非 GET 请求
   if (request.method !== 'GET') {
     return;
   }
@@ -53,41 +55,33 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.match(request).then((cachedResponse) => {
-        // 发起网络请求
-        const fetchPromise = fetch(request).then((networkResponse) => {
-          // 如果是成功的响应，缓存它
-          if (networkResponse.ok && networkResponse.status === 200) {
-            const responseToCache = networkResponse.clone();
-            cache.put(request, responseToCache);
-          }
-          return networkResponse;
-        }).catch(() => {
-          // 网络失败，返回null
-          return null;
-        });
-
-        // 如果有缓存，立即返回缓存，同时后台更新
+        // 如果有缓存，立即返回
         if (cachedResponse) {
-          // 忽略fetchPromise的返回，因为我们已经有缓存了
+          // 后台更新缓存（不阻塞）
+          fetch(request).then((networkResponse) => {
+            if (networkResponse.ok) {
+              cache.put(request, networkResponse.clone());
+            }
+          }).catch(() => {});
           return cachedResponse;
         }
 
-        // 没有缓存，等待网络响应
-        return fetchPromise.then((networkResponse) => {
-          if (networkResponse) {
-            return networkResponse;
+        // 无缓存，尝试网络
+        return fetch(request).then((networkResponse) => {
+          if (networkResponse.ok) {
+            cache.put(request, networkResponse.clone());
           }
-
-          // 网络也失败了
+          return networkResponse;
+        }).catch(() => {
+          // 网络失败
           if (isNavigate) {
             return caches.match('/').then((fallback) => {
-              return fallback || new Response('离线状态，请稍后重试', {
+              return fallback || new Response('离线状态', {
                 status: 503,
                 headers: { 'Content-Type': 'text/html; charset=utf-8' }
               });
             });
           }
-
           return new Response('Offline', { status: 503 });
         });
       });

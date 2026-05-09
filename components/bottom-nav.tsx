@@ -1,20 +1,20 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { Home, BarChart3, Database } from "lucide-react"
 
 export function BottomNav() {
-  const getPathname = () => {
-    if (typeof window === "undefined") return "/"
-    return window.location.pathname
-  }
+  const [pathname, setPathname] = useState("/")
+
+  useEffect(() => {
+    setPathname(window.location.pathname)
+  }, [])
 
   const links = [
     { href: "/", icon: Home, label: "打卡" },
     { href: "/stats", icon: BarChart3, label: "统计" },
     { href: "/data", icon: Database, label: "数据" },
   ]
-
-  const pathname = getPathname()
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-card/95 backdrop-blur-lg border-t border-border z-50 safe-area-inset-bottom">
