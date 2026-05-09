@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import { Download, Upload, Trash2 } from "lucide-react"
+import { Download, Upload, Trash2, Pencil } from "lucide-react"
 import { BottomNav } from "@/components/bottom-nav"
 import { SuccessToast } from "@/components/success-toast"
 import { getRecords, deleteRecord, downloadXLSX, importFromXLSX, clearRecords } from "@/lib/storage"
