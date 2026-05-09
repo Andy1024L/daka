@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v15';
+const CACHE_VERSION = 'v16';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `dynamic-${CACHE_VERSION}`;
 
@@ -12,7 +12,7 @@ const CORE_ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing v15...');
+  console.log('[SW] Installing v16...');
   event.waitUntil(
     caches.open(STATIC_CACHE)
       .then((cache) => {
@@ -27,7 +27,7 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Activating v15...');
+  console.log('[SW] Activating v16...');
   event.waitUntil(
     caches.keys()
       .then((keys) => {
@@ -57,10 +57,25 @@ self.addEventListener('fetch', (event) => {
 
   const isNavigate = request.mode === 'navigate';
   const isGet = request.method === 'GET';
+  const isRSC = url.searchParams.has('_rsc');
+
+  if (isRSC) {
+    event.respondWith(
+      fetch(request)
+        .catch(() => {
+          console.log('[SW] RSC request failed, returning empty response');
+          return new Response(JSON.stringify({}), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        })
+    );
+    return;
+  }
 
   if (isNavigate && isGet) {
     event.respondWith(
-      caches.match(request)
+      caches.match(request, { ignoreSearch: true })
         .then((cached) => {
           if (cached) {
             fetch(request)
@@ -87,7 +102,7 @@ self.addEventListener('fetch', (event) => {
             })
             .catch(() => {
               console.log('[SW] Network failed, trying static cache...');
-              return caches.match('/').then((fallback) => {
+              return caches.match('/', { ignoreSearch: true }).then((fallback) => {
                 if (fallback) {
                   return fallback;
                 }

@@ -1,25 +1,25 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import { Download, Upload, Trash2, Pencil } from "lucide-react"
+import { Download, Upload, Trash2, Pencil, X } from "lucide-react"
 import { BottomNav } from "@/components/bottom-nav"
 import { SuccessToast } from "@/components/success-toast"
-import { getRecords, deleteRecord, downloadXLSX, importFromXLSX, clearRecords } from "@/lib/storage"
+import { getRecords, deleteRecord, downloadXLSX, importFromXLSX, clearRecords, updateRecord } from "@/lib/storage"
 import type { CheckInRecord } from "@/types"
 import { Button } from "@/components/ui/button"
-import { usePrefetchEditPages } from "@/hooks/use-prefetch-edit-pages"
 
 export default function DataPage() {
   const [records, setRecords] = useState<CheckInRecord[]>([])
   const [toast, setToast] = useState({ visible: false, message: "" })
   const [showConfirm, setShowConfirm] = useState(false)
+  const [editingRecord, setEditingRecord] = useState<CheckInRecord | null>(null)
+  const [editDate, setEditDate] = useState("")
+  const [editDuration, setEditDuration] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     setRecords(getRecords())
   }, [])
-
-  usePrefetchEditPages()
 
   const showToast = useCallback((message: string) => {
     setToast({ visible: true, message })
@@ -66,8 +66,31 @@ export default function DataPage() {
     }
   }
 
-  const handleEditRecord = (id: string) => {
-    window.location.href = `/edit/${id}`
+  const handleEditClick = (record: CheckInRecord) => {
+    setEditingRecord(record)
+    setEditDate(record.date)
+    setEditDuration(String(record.duration))
+  }
+
+  const handleEditSave = () => {
+    if (!editingRecord) return
+    
+    const newDate = editDate.trim()
+    const newDuration = parseInt(editDuration)
+    
+    if (!newDate || isNaN(newDuration) || newDuration <= 0) {
+      showToast("请输入有效数据")
+      return
+    }
+    
+    updateRecord(editingRecord.id, { date: newDate, duration: newDuration })
+    setRecords(getRecords())
+    setEditingRecord(null)
+    showToast("记录已更新")
+  }
+
+  const handleEditCancel = () => {
+    setEditingRecord(null)
   }
 
   const formatTime = (timestamp: number) => {
@@ -189,7 +212,7 @@ export default function DataPage() {
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
-                      handleEditRecord(record.id)
+                      handleEditClick(record)
                     }}
                     className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors active:scale-90"
                   >
@@ -212,6 +235,75 @@ export default function DataPage() {
       </div>
 
       <SuccessToast message={toast.message} isVisible={toast.visible} />
+
+      {editingRecord && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-card rounded-2xl w-full max-w-sm shadow-2xl">
+            <div className="flex items-center justify-between p-4 border-b border-border">
+              <h3 className="text-lg font-bold text-foreground">编辑记录</h3>
+              <button
+                onClick={handleEditCancel}
+                className="p-2 rounded-lg hover:bg-muted transition-colors"
+              >
+                <X className="w-5 h-5 text-muted-foreground" />
+              </button>
+            </div>
+            
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-2">
+                  类型
+                </label>
+                <div className="px-3 py-2 bg-muted rounded-lg text-foreground font-medium">
+                  {editingRecord.category}
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-2">
+                  日期
+                </label>
+                <input
+                  type="date"
+                  value={editDate}
+                  onChange={(e) => setEditDate(e.target.value)}
+                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-2">
+                  {editingRecord.category === "锻炼" ? "时长（分钟）" : "次数"}
+                </label>
+                <input
+                  type="number"
+                  value={editDuration}
+                  onChange={(e) => setEditDuration(e.target.value)}
+                  min="1"
+                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+            </div>
+            
+            <div className="p-4 flex gap-3">
+              <Button
+                onClick={handleEditCancel}
+                variant="outline"
+                className="flex-1"
+              >
+                取消
+              </Button>
+              <Button
+                onClick={handleEditSave}
+                className="flex-1"
+              >
+                保存
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <BottomNav />
     </main>
   )
