@@ -1,18 +1,18 @@
-const CACHE_VERSION = 'v18';
+const CACHE_VERSION = 'v19';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `dynamic-${CACHE_VERSION}`;
 
 const CORE_ASSETS = [
   '/',
-  '/stats',
-  '/data',
+  '/stats/',
+  '/data/',
   '/manifest.json',
   '/icon-192.png',
   '/icon-512.png',
 ];
 
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing v18...');
+  console.log('[SW] Installing v19...');
   event.waitUntil(
     caches.open(STATIC_CACHE)
       .then((cache) => {
@@ -23,11 +23,14 @@ self.addEventListener('install', (event) => {
         console.log('[SW] Skip waiting');
         return self.skipWaiting();
       })
+      .catch((error) => {
+        console.log('[SW] Cache addAll failed:', error);
+      })
   );
 });
 
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Activating v18...');
+  console.log('[SW] Activating v19...');
   event.waitUntil(
     caches.keys()
       .then((keys) => {
@@ -71,15 +74,6 @@ self.addEventListener('fetch', (event) => {
       caches.match(request, { ignoreSearch: true })
         .then((cached) => {
           if (cached) {
-            fetch(request)
-              .then((response) => {
-                if (response.ok) {
-                  caches.open(DYNAMIC_CACHE).then((cache) => {
-                    cache.put(request, response.clone());
-                  });
-                }
-              })
-              .catch(() => {});
             return cached;
           }
 
@@ -99,9 +93,14 @@ self.addEventListener('fetch', (event) => {
                 if (fallback) {
                   return fallback;
                 }
-                return new Response('离线模式 - 请连接网络', {
-                  status: 503,
-                  headers: { 'Content-Type': 'text/html; charset=utf-8' }
+                return caches.match('/index.html').then((htmlFallback) => {
+                  if (htmlFallback) {
+                    return htmlFallback;
+                  }
+                  return new Response('离线模式 - 请连接网络', {
+                    status: 503,
+                    headers: { 'Content-Type': 'text/html; charset=utf-8' }
+                  });
                 });
               });
             });
