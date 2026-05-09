@@ -50,7 +50,6 @@ export default function RootLayout({
         <ServiceWorkerRegistration />
         <UpdatePrompt />
         {children}
-        {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>
   )
