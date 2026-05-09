@@ -3,7 +3,7 @@
 import { useEffect } from "react"
 
 const VERSION_KEY = "app-version"
-const CURRENT_VERSION = 11
+const CURRENT_VERSION = 12
 
 export function ServiceWorkerRegistration() {
   useEffect(() => {
