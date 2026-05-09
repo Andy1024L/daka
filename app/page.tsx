@@ -194,7 +194,7 @@ export default function HomePage() {
       <BottomNav />
 
       <footer className="fixed bottom-20 left-0 right-0 flex items-center justify-center gap-3 py-2">
-        <span className="text-xs text-muted-foreground/50">v1.1.0</span>
+        <span className="text-xs text-muted-foreground/50">v1.1.1</span>
         <button
           onClick={handleManualUpdate}
           disabled={isUpdating}
