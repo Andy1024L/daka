@@ -11,9 +11,18 @@ export function ServiceWorkerRegistration() {
       return
     }
 
+    let refreshing = false
+
     const registerSW = async () => {
       try {
         const registration = await navigator.serviceWorker.register("/sw.js")
+
+        // 监听 controller 变化（新版本激活后刷新页面）
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+          if (refreshing) return
+          refreshing = true
+          window.location.reload()
+        })
 
         registration.addEventListener("updatefound", () => {
           const newWorker = registration.installing

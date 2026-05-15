@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { ChevronLeft, ChevronRight, TrendingUp } from "lucide-react"
+import { ChevronLeft, ChevronRight } from "lucide-react"
 import { BottomNav } from "@/components/bottom-nav"
 import { getRecords, getMonthlyStats, getDailyStats, getYearlyMonthlyStats } from "@/lib/storage"
 import type { CheckInRecord } from "@/types"
@@ -13,9 +13,18 @@ export default function StatsPage() {
   const [activeTab, setActiveTab] = useState<TabType>("全部")
   const [viewMode, setViewMode] = useState<"month" | "year">("month")
   const [currentDate, setCurrentDate] = useState(new Date())
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    setRecords(getRecords())
+    try {
+      const data = getRecords()
+      setRecords(data)
+    } catch (err) {
+      console.error("加载数据失败:", err)
+      setRecords([])
+    } finally {
+      setIsLoading(false)
+    }
   }, [])
 
   const year = currentDate.getFullYear()
@@ -152,25 +161,32 @@ export default function StatsPage() {
       </header>
 
       <div className="max-w-md mx-auto px-4 py-4 space-y-4">
-        {/* Tab 切换 */}
-        <div className="flex gap-2 bg-muted/50 p-1 rounded-xl">
-          {tabs.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`
-                flex-1 py-2 px-3 rounded-lg text-sm font-medium
-                transition-all duration-200
-                ${activeTab === tab
-                  ? getTabColor(tab)
-                  : "text-muted-foreground hover:text-foreground"
-                }
-              `}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
+        {/* 加载态 */}
+        {isLoading ? (
+          <div className="text-center py-12 text-muted-foreground text-sm">
+            加载中...
+          </div>
+        ) : (
+          <>
+            {/* Tab 切换 */}
+            <div className="flex gap-2 bg-muted/50 p-1 rounded-xl">
+              {tabs.map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`
+                    flex-1 py-2 px-3 rounded-lg text-sm font-medium
+                    transition-all duration-200
+                    ${activeTab === tab
+                      ? getTabColor(tab)
+                      : "text-muted-foreground hover:text-foreground"
+                    }
+                  `}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
 
         {/* 统计卡片 */}
         <div className="bg-card rounded-2xl p-4 border border-border shadow-sm">
@@ -326,6 +342,8 @@ export default function StatsPage() {
             </div>
           )}
         </div>
+          </>
+        )}
       </div>
 
       <BottomNav />
