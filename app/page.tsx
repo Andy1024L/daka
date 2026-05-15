@@ -221,23 +221,26 @@ export default function HomePage() {
       <SuccessToast message={toast.message} isVisible={toast.visible} />
       <BottomNav />
 
-      <footer className="fixed bottom-20 left-0 right-0 flex items-center justify-center gap-3 py-2">
-        {!isOnline && (
-          <span className="text-xs text-amber-600 flex items-center gap-1">
-            <WifiOff className="w-3 h-3" />
-            离线模式
-          </span>
-        )}
-        <span className="text-xs text-muted-foreground/50">v1.1.1</span>
-        <button
-          onClick={handleManualUpdate}
-          disabled={isUpdating || !isOnline}
-          className="text-xs text-muted-foreground/50 hover:text-muted-foreground flex items-center gap-1 transition-colors disabled:opacity-50 active:scale-95"
-        >
-          <RefreshCw className={`w-3 h-3 ${isUpdating ? "animate-spin" : ""}`} />
-          {isUpdating ? "更新中" : "手动更新"}
-        </button>
-      </footer>
+      {/* 版本信息和更新按钮 - 放在打卡区块下方而不是 fixed 定位 */}
+      <div className="max-w-md mx-auto px-4 pb-24">
+        <div className="flex items-center justify-center gap-3 py-4">
+          {!isOnline && (
+            <span className="text-xs text-amber-600 flex items-center gap-1">
+              <WifiOff className="w-3 h-3" />
+              离线模式
+            </span>
+          )}
+          <span className="text-xs text-muted-foreground/50">v1.1.2</span>
+          <button
+            onClick={handleManualUpdate}
+            disabled={isUpdating || !isOnline}
+            className="text-xs text-muted-foreground/50 hover:text-muted-foreground flex items-center gap-1 transition-colors disabled:opacity-50 active:scale-95"
+          >
+            <RefreshCw className={`w-3 h-3 ${isUpdating ? "animate-spin" : ""}`} />
+            {isUpdating ? "更新中" : "检查更新"}
+          </button>
+        </div>
+      </div>
     </main>
   )
 }
