@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v20';
+const CACHE_VERSION = 'v21';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `dynamic-${CACHE_VERSION}`;
 
@@ -13,7 +13,7 @@ const CORE_ASSETS = [
 
 // 安装时预缓存核心资源
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing v20...');
+  console.log('[SW] Installing v21...');
   event.waitUntil(
     caches.open(STATIC_CACHE)
       .then((cache) => {
@@ -32,7 +32,7 @@ self.addEventListener('install', (event) => {
 
 // 激活时清理旧缓存
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Activating v20...');
+  console.log('[SW] Activating v21...');
   event.waitUntil(
     caches.keys()
       .then((keys) => {
@@ -52,26 +52,37 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// 网络优先，缓存回退策略
-async function networkFirst(request) {
-  try {
-    const response = await fetch(request);
-    if (response.ok) {
-      const cache = await caches.open(DYNAMIC_CACHE);
-      cache.put(request, response.clone());
-    }
-    return response;
-  } catch (error) {
-    // 网络失败，尝试缓存
-    const cached = await caches.match(request, { ignoreSearch: true });
-    if (cached) {
-      return cached;
-    }
-    throw error;
+// 缓存优先策略：优先使用缓存，后台更新
+async function cacheFirstWithBackgroundUpdate(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  const cached = await cache.match(request, { ignoreSearch: true });
+  
+  // 后台尝试更新缓存（不阻塞响应）
+  const fetchPromise = fetch(request)
+    .then((response) => {
+      if (response.ok) {
+        cache.put(request, response.clone());
+      }
+      return response;
+    })
+    .catch(() => null);
+  
+  // 如果有缓存，立即返回缓存
+  if (cached) {
+    return cached;
   }
+  
+  // 没有缓存时，等待网络请求
+  const networkResponse = await fetchPromise;
+  if (networkResponse) {
+    return networkResponse;
+  }
+  
+  // 网络也失败，返回离线页面
+  return null;
 }
 
-// 缓存优先，网络回退策略（用于静态资源）
+// 纯缓存优先策略（用于静态资源）
 async function cacheFirst(request) {
   const cached = await caches.match(request);
   if (cached) {
@@ -92,6 +103,57 @@ async function cacheFirst(request) {
       statusText: 'Offline'
     });
   }
+}
+
+// 离线回退页面
+function getOfflinePage() {
+  return new Response(`
+    <!DOCTYPE html>
+    <html lang="zh-CN">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>离线模式</title>
+      <style>
+        body {
+          font-family: system-ui, -apple-system, sans-serif;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          min-height: 100vh;
+          margin: 0;
+          background: #f5f5f5;
+          color: #333;
+        }
+        .container {
+          text-align: center;
+          padding: 2rem;
+        }
+        h1 { font-size: 1.5rem; margin-bottom: 1rem; }
+        p { color: #666; margin-bottom: 1.5rem; }
+        button {
+          background: #f97316;
+          color: white;
+          border: none;
+          padding: 0.75rem 1.5rem;
+          border-radius: 0.5rem;
+          font-size: 1rem;
+          cursor: pointer;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>离线模式</h1>
+        <p>当前无法连接到网络，请检查网络连接后重试。</p>
+        <button onclick="window.location.reload()">重试</button>
+      </div>
+    </body>
+    </html>
+  `, {
+    status: 503,
+    headers: { 'Content-Type': 'text/html; charset=utf-8' }
+  });
 }
 
 self.addEventListener('fetch', (event) => {
@@ -115,69 +177,22 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 页面导航请求：网络优先
+  // 页面导航请求：缓存优先，后台更新
   if (isNavigate && isGet) {
     event.respondWith(
-      networkFirst(request)
-        .catch(() => {
-          console.log('[SW] Network failed for navigation, trying static cache...');
-          return caches.match('/', { ignoreSearch: true }).then((fallback) => {
-            if (fallback) {
-              return fallback;
-            }
-            return caches.match('/index.html').then((htmlFallback) => {
-              if (htmlFallback) {
-                return htmlFallback;
-              }
-              return new Response(`
-                <!DOCTYPE html>
-                <html lang="zh-CN">
-                <head>
-                  <meta charset="UTF-8">
-                  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                  <title>离线模式</title>
-                  <style>
-                    body {
-                      font-family: system-ui, -apple-system, sans-serif;
-                      display: flex;
-                      justify-content: center;
-                      align-items: center;
-                      min-height: 100vh;
-                      margin: 0;
-                      background: #f5f5f5;
-                      color: #333;
-                    }
-                    .container {
-                      text-align: center;
-                      padding: 2rem;
-                    }
-                    h1 { font-size: 1.5rem; margin-bottom: 1rem; }
-                    p { color: #666; margin-bottom: 1.5rem; }
-                    button {
-                      background: #f97316;
-                      color: white;
-                      border: none;
-                      padding: 0.75rem 1.5rem;
-                      border-radius: 0.5rem;
-                      font-size: 1rem;
-                      cursor: pointer;
-                    }
-                  </style>
-                </head>
-                <body>
-                  <div class="container">
-                    <h1>离线模式</h1>
-                    <p>当前无法连接到网络，请检查网络连接后重试。</p>
-                    <button onclick="window.location.reload()">重试</button>
-                  </div>
-                </body>
-                </html>
-              `, {
-                status: 503,
-                headers: { 'Content-Type': 'text/html; charset=utf-8' }
-              });
-            });
-          });
+      cacheFirstWithBackgroundUpdate(request, DYNAMIC_CACHE)
+        .then((response) => {
+          if (response) {
+            return response;
+          }
+          // 尝试返回根路径缓存
+          return caches.match('/', { ignoreSearch: true });
+        })
+        .then((response) => {
+          if (response) {
+            return response;
+          }
+          return getOfflinePage();
         })
     );
     return;
