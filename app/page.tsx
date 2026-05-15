@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useCallback } from "react"
-import { Dumbbell, Sparkles, Check, RefreshCw } from "lucide-react"
+import { useState, useCallback, useEffect } from "react"
+import { Dumbbell, Sparkles, Check, RefreshCw, WifiOff } from "lucide-react"
 import { BottomNav } from "@/components/bottom-nav"
 import { SuccessToast } from "@/components/success-toast"
 import { addRecord } from "@/lib/storage"
@@ -10,8 +10,28 @@ export default function HomePage() {
   const [toast, setToast] = useState({ visible: false, message: "" })
   const [animatingBtn, setAnimatingBtn] = useState<string | null>(null)
   const [isUpdating, setIsUpdating] = useState(false)
+  const [isOnline, setIsOnline] = useState(true)
+
+  // 监听在线状态
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    
+    setIsOnline(navigator.onLine)
+    
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+    
+    window.addEventListener("online", handleOnline)
+    window.addEventListener("offline", handleOffline)
+    
+    return () => {
+      window.removeEventListener("online", handleOnline)
+      window.removeEventListener("offline", handleOffline)
+    }
+  }, [])
 
   const showToast = useCallback((message: string) => {
+    if (!message) return
     setToast({ visible: true, message })
     setTimeout(() => setToast({ visible: false, message: "" }), 2000)
   }, [])
@@ -63,20 +83,28 @@ export default function HomePage() {
 
   const handleWorkoutCheckIn = useCallback(
     (duration: number) => {
-      addRecord("锻炼", duration)
-      setAnimatingBtn(`workout-${duration}`)
-      setTimeout(() => setAnimatingBtn(null), 600)
-      showToast(`锻炼 ${duration}分钟`)
+      const record = addRecord("锻炼", duration)
+      if (record) {
+        setAnimatingBtn(`workout-${duration}`)
+        setTimeout(() => setAnimatingBtn(null), 600)
+        showToast(`锻炼 ${duration}分钟`)
+      } else {
+        showToast("保存失败，请重试")
+      }
     },
     [showToast]
   )
 
   const handleStretchCheckIn = useCallback(
     (count: 1 | 2) => {
-      addRecord("拉伸", count)
-      setAnimatingBtn(`stretch-${count}`)
-      setTimeout(() => setAnimatingBtn(null), 600)
-      showToast(`拉伸 x${count}`)
+      const record = addRecord("拉伸", count)
+      if (record) {
+        setAnimatingBtn(`stretch-${count}`)
+        setTimeout(() => setAnimatingBtn(null), 600)
+        showToast(`拉伸 x${count}`)
+      } else {
+        showToast("保存失败，请重试")
+      }
     },
     [showToast]
   )
@@ -194,10 +222,16 @@ export default function HomePage() {
       <BottomNav />
 
       <footer className="fixed bottom-20 left-0 right-0 flex items-center justify-center gap-3 py-2">
+        {!isOnline && (
+          <span className="text-xs text-amber-600 flex items-center gap-1">
+            <WifiOff className="w-3 h-3" />
+            离线模式
+          </span>
+        )}
         <span className="text-xs text-muted-foreground/50">v1.1.1</span>
         <button
           onClick={handleManualUpdate}
-          disabled={isUpdating}
+          disabled={isUpdating || !isOnline}
           className="text-xs text-muted-foreground/50 hover:text-muted-foreground flex items-center gap-1 transition-colors disabled:opacity-50 active:scale-95"
         >
           <RefreshCw className={`w-3 h-3 ${isUpdating ? "animate-spin" : ""}`} />

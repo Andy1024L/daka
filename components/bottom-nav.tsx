@@ -14,10 +14,10 @@ export function BottomNav() {
   ]
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-card/95 backdrop-blur-lg border-t border-border z-50 safe-area-inset-bottom">
+    <nav className="fixed bottom-0 left-0 right-0 bg-card/95 backdrop-blur-lg border-t border-border z-50 pb-[env(safe-area-inset-bottom)]">
       <div className="max-w-md mx-auto flex">
         {links.map(({ href, icon: Icon, label }) => {
-          const isActive = pathname === href || (href !== "/" && pathname.startsWith(href))
+          const isActive = pathname === href || (href !== "/" && pathname?.startsWith(href))
           return (
             <Link
               key={href}

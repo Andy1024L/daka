@@ -8,6 +8,9 @@ interface SuccessToastProps {
 }
 
 export function SuccessToast({ message, isVisible }: SuccessToastProps) {
+  // 不渲染空消息或不可见的 toast
+  if (!isVisible || !message) return null
+
   return (
     <div
       className={`
@@ -15,7 +18,7 @@ export function SuccessToast({ message, isVisible }: SuccessToastProps) {
         bg-foreground text-background px-6 py-3 rounded-full
         flex items-center gap-2 shadow-lg
         transition-all duration-300 ease-out
-        ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"}
+        opacity-100 translate-y-0
       `}
     >
       <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center">

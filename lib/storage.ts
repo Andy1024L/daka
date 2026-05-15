@@ -1,6 +1,7 @@
 import type { CheckInRecord } from "@/types"
 
 const STORAGE_KEY = "check-in-records"
+const CACHE_KEY = "check-in-records-cache"
 
 let XLSX: typeof import("xlsx") | null = null
 
@@ -11,6 +12,51 @@ async function getXLSX() {
   return XLSX
 }
 
+// 检查 localStorage 是否可用
+function isLocalStorageAvailable(): boolean {
+  if (typeof window === "undefined") return false
+  try {
+    const testKey = "__storage_test__"
+    localStorage.setItem(testKey, testKey)
+    localStorage.removeItem(testKey)
+    return true
+  } catch {
+    return false
+  }
+}
+
+// 安全地从 localStorage 读取数据
+function safeGetItem(key: string): string | null {
+  if (!isLocalStorageAvailable()) return null
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+// 安全地写入 localStorage
+function safeSetItem(key: string, value: string): boolean {
+  if (!isLocalStorageAvailable()) return false
+  try {
+    localStorage.setItem(key, value)
+    return true
+  } catch {
+    return false
+  }
+}
+
+// 安全地删除 localStorage 数据
+function safeRemoveItem(key: string): boolean {
+  if (!isLocalStorageAvailable()) return false
+  try {
+    localStorage.removeItem(key)
+    return true
+  } catch {
+    return false
+  }
+}
+
 // 兼容旧数据：将"体能训练"转换为"锻炼"
 function migrateRecord(record: CheckInRecord): CheckInRecord {
   if ((record.category as string) === "体能训练") {
@@ -19,10 +65,24 @@ function migrateRecord(record: CheckInRecord): CheckInRecord {
   return record
 }
 
+// 验证记录是否有效
+function isValidRecord(record: unknown): record is CheckInRecord {
+  if (!record || typeof record !== "object") return false
+  const r = record as Record<string, unknown>
+  return (
+    typeof r.id === "string" &&
+    typeof r.timestamp === "number" &&
+    typeof r.date === "string" &&
+    (r.category === "锻炼" || r.category === "拉伸" || r.category === "体能训练") &&
+    typeof r.duration === "number" &&
+    r.duration > 0
+  )
+}
+
 // 生成唯一 ID: YYYYMMDD-序号-时间戳后4位
 function generateId(records: CheckInRecord[], date: string): string {
   const datePrefix = date.replace(/-/g, "")
-  const todayRecords = records.filter(r => r.id.startsWith(datePrefix))
+  const todayRecords = records.filter(r => r.id?.startsWith(datePrefix))
   const nextNum = todayRecords.length + 1
   const timestamp = Date.now() % 10000
   return `${datePrefix}-${String(nextNum).padStart(3, "0")}-${timestamp}`
@@ -31,6 +91,7 @@ function generateId(records: CheckInRecord[], date: string): string {
 // 格式化时间戳为 HH:MM:SS
 function formatTime(timestamp: number): string {
   const date = new Date(timestamp)
+  if (isNaN(date.getTime())) return "00:00:00"
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}:${String(date.getSeconds()).padStart(2, "0")}`
 }
 
@@ -38,24 +99,94 @@ function formatTime(timestamp: number): string {
 function parseTimeToTimestamp(dateStr: string, timeStr: string): number {
   const [hours, minutes, seconds] = timeStr.split(":").map(Number)
   const date = new Date(dateStr)
+  if (isNaN(date.getTime())) return Date.now()
   date.setHours(hours || 0, minutes || 0, seconds || 0, 0)
   return date.getTime()
 }
 
+// 内存缓存
+let memoryCache: CheckInRecord[] | null = null
+
 export function getRecords(): CheckInRecord[] {
   if (typeof window === "undefined") return []
-  const data = localStorage.getItem(STORAGE_KEY)
-  if (!data) return []
-  const records: CheckInRecord[] = JSON.parse(data)
-  return records.map(migrateRecord)
+  
+  // 首先尝试从内存缓存读取
+  if (memoryCache !== null) {
+    return [...memoryCache]
+  }
+  
+  const data = safeGetItem(STORAGE_KEY)
+  if (!data) {
+    // 尝试从备份缓存恢复
+    const cacheData = safeGetItem(CACHE_KEY)
+    if (cacheData) {
+      try {
+        const parsed = JSON.parse(cacheData)
+        if (Array.isArray(parsed)) {
+          const validRecords = parsed.filter(isValidRecord).map(migrateRecord)
+          memoryCache = validRecords
+          // 尝试恢复主存储
+          safeSetItem(STORAGE_KEY, JSON.stringify(validRecords))
+          return [...validRecords]
+        }
+      } catch {
+        // 备份也损坏，返回空数组
+      }
+    }
+    memoryCache = []
+    return []
+  }
+  
+  try {
+    const parsed = JSON.parse(data)
+    if (!Array.isArray(parsed)) {
+      memoryCache = []
+      return []
+    }
+    const validRecords = parsed.filter(isValidRecord).map(migrateRecord)
+    memoryCache = validRecords
+    return [...validRecords]
+  } catch {
+    // JSON 解析失败，尝试从缓存恢复
+    const cacheData = safeGetItem(CACHE_KEY)
+    if (cacheData) {
+      try {
+        const parsed = JSON.parse(cacheData)
+        if (Array.isArray(parsed)) {
+          const validRecords = parsed.filter(isValidRecord).map(migrateRecord)
+          memoryCache = validRecords
+          safeSetItem(STORAGE_KEY, JSON.stringify(validRecords))
+          return [...validRecords]
+        }
+      } catch {
+        // 备份也损坏
+      }
+    }
+    memoryCache = []
+    return []
+  }
 }
 
-export function saveRecords(records: CheckInRecord[]): void {
-  if (typeof window === "undefined") return
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(records))
+export function saveRecords(records: CheckInRecord[]): boolean {
+  if (typeof window === "undefined") return false
+  
+  // 过滤无效记录
+  const validRecords = records.filter(isValidRecord)
+  const data = JSON.stringify(validRecords)
+  
+  // 同时保存到主存储和备份
+  const mainSaved = safeSetItem(STORAGE_KEY, data)
+  safeSetItem(CACHE_KEY, data) // 备份
+  
+  // 更新内存缓存
+  memoryCache = [...validRecords]
+  
+  return mainSaved
 }
 
-export function addRecord(category: "锻炼" | "拉伸", duration: number): CheckInRecord {
+export function addRecord(category: "锻炼" | "拉伸", duration: number): CheckInRecord | null {
+  if (duration <= 0) return null
+  
   const records = getRecords()
   const now = new Date()
   const date = now.toISOString().split("T")[0]
@@ -69,44 +200,53 @@ export function addRecord(category: "锻炼" | "拉伸", duration: number): Chec
   }
   
   records.push(record)
-  saveRecords(records)
-  return record
+  const saved = saveRecords(records)
+  
+  return saved ? record : null
 }
 
 export function updateRecord(id: string, updates: Partial<Pick<CheckInRecord, "date" | "duration">>): boolean {
+  if (!id) return false
+  
   const records = getRecords()
   const index = records.findIndex(r => r.id === id)
   if (index === -1) return false
   
-  if (updates.date) {
+  if (updates.date && typeof updates.date === "string") {
     records[index].date = updates.date
   }
-  if (updates.duration !== undefined) {
+  if (typeof updates.duration === "number" && updates.duration > 0) {
     records[index].duration = updates.duration
   }
   
-  saveRecords(records)
-  return true
+  return saveRecords(records)
 }
 
 export function deleteRecord(id: string): boolean {
+  if (!id) return false
+  
   const records = getRecords()
   const filtered = records.filter(r => r.id !== id)
   if (filtered.length === records.length) return false
-  saveRecords(filtered)
-  return true
+  
+  return saveRecords(filtered)
 }
 
-export function clearRecords(): void {
-  if (typeof window === "undefined") return
-  localStorage.removeItem(STORAGE_KEY)
+export function clearRecords(): boolean {
+  if (typeof window === "undefined") return false
+  
+  memoryCache = []
+  const mainCleared = safeRemoveItem(STORAGE_KEY)
+  safeRemoveItem(CACHE_KEY)
+  
+  return mainCleared
 }
 
 // 导出为 CSV，格式: 日期,时间,习惯名称,数值,量词
 export function exportToCSV(): string {
   const records = getRecords()
   const headers = ["日期", "时间", "习惯名称", "数值", "量词"]
-  const rows = records
+  const rows = [...records]
     .sort((a, b) => b.timestamp - a.timestamp)
     .map((r) => {
       const dateFormatted = r.date.replace(/-/g, "/")
@@ -139,7 +279,7 @@ export async function downloadXLSX(): Promise<void> {
   const records = getRecords()
   
   const headers = ["日期", "时间", "习惯名称", "数值", "量词"]
-  const rows = records
+  const rows = [...records]
     .sort((a, b) => b.timestamp - a.timestamp)
     .map((r) => {
       const dateFormatted = r.date.replace(/-/g, "/")

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import { Download, Upload, Trash2, Pencil, X } from "lucide-react"
+import { Download, Upload, Trash2, Pencil, X, AlertCircle } from "lucide-react"
 import { BottomNav } from "@/components/bottom-nav"
 import { SuccessToast } from "@/components/success-toast"
 import { getRecords, deleteRecord, downloadXLSX, importFromXLSX, clearRecords, updateRecord } from "@/lib/storage"
@@ -15,39 +15,90 @@ export default function DataPage() {
   const [editingRecord, setEditingRecord] = useState<CheckInRecord | null>(null)
   const [editDate, setEditDate] = useState("")
   const [editDuration, setEditDuration] = useState("")
+  const [isLoading, setIsLoading] = useState(true)
+  const [isExporting, setIsExporting] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    setRecords(getRecords())
+    try {
+      const data = getRecords()
+      setRecords(data)
+      setError(null)
+    } catch (err) {
+      console.error("加载数据失败:", err)
+      setError("加载数据失败")
+    } finally {
+      setIsLoading(false)
+    }
   }, [])
 
   const showToast = useCallback((message: string) => {
+    if (!message) return
     setToast({ visible: true, message })
     setTimeout(() => setToast({ visible: false, message: "" }), 2000)
   }, [])
 
   const handleExport = async () => {
-    await downloadXLSX()
-    showToast("表格导出成功")
+    if (isExporting) return
+    setIsExporting(true)
+    
+    try {
+      await downloadXLSX()
+      showToast("表格导出成功")
+    } catch (err) {
+      console.error("导出失败:", err)
+      showToast("导出失败，请重试")
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   const handleImportClick = () => {
+    if (isImporting) return
     fileInputRef.current?.click()
   }
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-
-    const reader = new FileReader()
-    reader.onload = async (event) => {
-      const buffer = event.target?.result as ArrayBuffer
-      const mode = records.length > 0 ? "merge" : "replace"
-      const count = await importFromXLSX(buffer, mode)
-      setRecords(getRecords())
-      showToast(`导入 ${count} 条记录`)
+    
+    setIsImporting(true)
+    
+    try {
+      const reader = new FileReader()
+      reader.onload = async (event) => {
+        try {
+          const buffer = event.target?.result as ArrayBuffer
+          if (!buffer) {
+            showToast("读取文件失败")
+            setIsImporting(false)
+            return
+          }
+          
+          const mode = records.length > 0 ? "merge" : "replace"
+          const count = await importFromXLSX(buffer, mode)
+          setRecords(getRecords())
+          showToast(`导入 ${count} 条记录`)
+        } catch (err) {
+          console.error("导入失败:", err)
+          showToast("导入失败，请检查文件格式")
+        } finally {
+          setIsImporting(false)
+        }
+      }
+      reader.onerror = () => {
+        showToast("读取文件失败")
+        setIsImporting(false)
+      }
+      reader.readAsArrayBuffer(file)
+    } catch (err) {
+      console.error("导入失败:", err)
+      showToast("导入失败，请重试")
+      setIsImporting(false)
     }
-    reader.readAsArrayBuffer(file)
+    
     e.target.value = ""
   }
 
@@ -94,11 +145,14 @@ export default function DataPage() {
   }
 
   const formatTime = (timestamp: number) => {
+    if (!timestamp || isNaN(timestamp)) return "00:00"
     const date = new Date(timestamp)
+    if (isNaN(date.getTime())) return "00:00"
     return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`
   }
 
-  const sortedRecords = records.sort((a, b) => b.timestamp - a.timestamp)
+  // 使用 spread 避免修改原数组
+  const sortedRecords = [...records].sort((a, b) => b.timestamp - a.timestamp)
 
   return (
     <main className="min-h-screen bg-background pb-24">
@@ -109,24 +163,34 @@ export default function DataPage() {
       </header>
 
       <div className="max-w-md mx-auto px-4 py-4 space-y-4">
+        {/* 错误提示 */}
+        {error && (
+          <div className="bg-destructive/10 text-destructive rounded-xl p-4 flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 flex-shrink-0" />
+            <span className="text-sm">{error}</span>
+          </div>
+        )}
+
         <div className="bg-card rounded-2xl p-4 border border-border shadow-sm">
           <h2 className="text-sm font-medium text-muted-foreground mb-3">数据管理</h2>
           <div className="grid grid-cols-2 gap-2">
             <Button
               onClick={handleExport}
               variant="outline"
+              disabled={isExporting || records.length === 0}
               className="h-11 gap-2 text-sm"
             >
               <Download className="w-4 h-4" />
-              导出表格
+              {isExporting ? "导出中..." : "导出表格"}
             </Button>
             <Button
               onClick={handleImportClick}
               variant="outline"
+              disabled={isImporting}
               className="h-11 gap-2 text-sm"
             >
               <Upload className="w-4 h-4" />
-              导入表格
+              {isImporting ? "导入中..." : "导入表格"}
             </Button>
           </div>
 
@@ -134,7 +198,8 @@ export default function DataPage() {
             <Button
               onClick={() => setShowConfirm(true)}
               variant="outline"
-              className="w-full h-11 gap-2 text-sm mt-2 text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30"
+              disabled={records.length === 0}
+              className="w-full h-11 gap-2 text-sm mt-2 text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30 disabled:text-muted-foreground disabled:border-border"
             >
               <Trash2 className="w-4 h-4" />
               清除所有数据
@@ -178,7 +243,11 @@ export default function DataPage() {
           </div>
 
           <div className="max-h-[50vh] overflow-y-auto divide-y divide-border">
-            {sortedRecords.length === 0 ? (
+            {isLoading ? (
+              <div className="text-center py-12 text-muted-foreground text-sm">
+                加载中...
+              </div>
+            ) : sortedRecords.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground text-sm">
                 暂无记录
               </div>
