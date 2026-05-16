@@ -1,5 +1,4 @@
 import type { Metadata } from 'next'
-import { UpdatePrompt } from '@/components/update-prompt'
 import { ServiceWorkerRegistration } from '@/components/service-worker-registration'
 import './globals.css'
 
@@ -48,7 +47,6 @@ export default function RootLayout({
     <html lang="zh-CN" className="bg-background">
       <body className="font-sans antialiased">
         <ServiceWorkerRegistration />
-        <UpdatePrompt />
         {children}
       </body>
     </html>
