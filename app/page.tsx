@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
-import { Dumbbell, Sparkles, Check, RefreshCw, WifiOff } from "lucide-react"
+import { useState, useCallback } from "react"
+import { Dumbbell, Sparkles, Check } from "lucide-react"
 import { BottomNav } from "@/components/bottom-nav"
 import { SuccessToast } from "@/components/success-toast"
 import { addRecord } from "@/lib/storage"
@@ -9,77 +9,12 @@ import { addRecord } from "@/lib/storage"
 export default function HomePage() {
   const [toast, setToast] = useState({ visible: false, message: "" })
   const [animatingBtn, setAnimatingBtn] = useState<string | null>(null)
-  const [isUpdating, setIsUpdating] = useState(false)
-  const [isOnline, setIsOnline] = useState(true)
-
-  // 监听在线状态
-  useEffect(() => {
-    if (typeof window === "undefined") return
-    
-    setIsOnline(navigator.onLine)
-    
-    const handleOnline = () => setIsOnline(true)
-    const handleOffline = () => setIsOnline(false)
-    
-    window.addEventListener("online", handleOnline)
-    window.addEventListener("offline", handleOffline)
-    
-    return () => {
-      window.removeEventListener("online", handleOnline)
-      window.removeEventListener("offline", handleOffline)
-    }
-  }, [])
 
   const showToast = useCallback((message: string) => {
     if (!message) return
     setToast({ visible: true, message })
     setTimeout(() => setToast({ visible: false, message: "" }), 2000)
   }, [])
-
-  const handleManualUpdate = useCallback(async () => {
-    if (isUpdating) return
-    setIsUpdating(true)
-
-    try {
-      if (!("serviceWorker" in navigator)) {
-        showToast("浏览器不支持离线功能")
-        setIsUpdating(false)
-        return
-      }
-
-      const registration = await navigator.serviceWorker.getRegistration()
-      if (!registration) {
-        showToast("未找到 Service Worker")
-        setIsUpdating(false)
-        return
-      }
-
-      await registration.update()
-
-      if (registration.waiting) {
-        registration.waiting.postMessage("skipWaiting")
-        showToast("更新成功，正在刷新...")
-        setTimeout(() => window.location.reload(), 1000)
-      } else if (registration.installing) {
-        showToast("正在下载更新...")
-        registration.installing.addEventListener("statechange", (e) => {
-          const sw = e.target as ServiceWorker
-          if (sw.state === "installed") {
-            sw.postMessage("skipWaiting")
-            showToast("更新成功，正在刷新...")
-            setTimeout(() => window.location.reload(), 1000)
-          }
-        })
-      } else {
-        showToast("已是最新版本")
-      }
-    } catch (error) {
-      console.error("更新失败:", error)
-      showToast("更新失败，请检查网络")
-    } finally {
-      setTimeout(() => setIsUpdating(false), 2000)
-    }
-  }, [isUpdating, showToast])
 
   const handleWorkoutCheckIn = useCallback(
     (duration: number) => {
@@ -221,24 +156,10 @@ export default function HomePage() {
       <SuccessToast message={toast.message} isVisible={toast.visible} />
       <BottomNav />
 
-      {/* 版本信息和更新按钮 - 放在打卡区块下方而不是 fixed 定位 */}
+      {/* 版本号 */}
       <div className="max-w-md mx-auto px-4 pb-24">
-        <div className="flex items-center justify-center gap-3 py-4">
-          {!isOnline && (
-            <span className="text-xs text-amber-600 flex items-center gap-1">
-              <WifiOff className="w-3 h-3" />
-              离线模式
-            </span>
-          )}
-          <span className="text-xs text-muted-foreground/50">v1.1.2</span>
-          <button
-            onClick={handleManualUpdate}
-            disabled={isUpdating || !isOnline}
-            className="text-xs text-muted-foreground/50 hover:text-muted-foreground flex items-center gap-1 transition-colors disabled:opacity-50 active:scale-95"
-          >
-            <RefreshCw className={`w-3 h-3 ${isUpdating ? "animate-spin" : ""}`} />
-            {isUpdating ? "更新中" : "检查更新"}
-          </button>
+        <div className="flex items-center justify-center py-4">
+          <span className="text-xs text-muted-foreground/50">v1.2.0</span>
         </div>
       </div>
     </main>
