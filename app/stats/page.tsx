@@ -64,17 +64,20 @@ export default function StatsPage() {
 
   // 年历数据
   const yearCalendar = useMemo(() => {
-    const months: { month: number; days: { day: number; hasRecord: boolean }[] }[] = []
+    const months: { month: number; days: { day: number; hasRecord: boolean; hasWorkout: boolean; hasStretch: boolean }[] }[] = []
 
     for (let m = 0; m < 12; m++) {
       const daysInMonth = new Date(year, m + 1, 0).getDate()
-      const monthDays: { day: number; hasRecord: boolean }[] = []
+      const monthDays: { day: number; hasRecord: boolean; hasWorkout: boolean; hasStretch: boolean }[] = []
 
       for (let d = 1; d <= daysInMonth; d++) {
         const dateStr = `${year}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`
         const dayData = dailyStats.get(dateStr)
         
         let hasRecord = false
+        const hasWorkout = dayData ? dayData.workout > 0 : false
+        const hasStretch = dayData ? dayData.stretch > 0 : false
+        
         if (dayData) {
           if (activeTab === "全部") {
             hasRecord = dayData.total > 0 || dayData.stretch > 0
@@ -85,7 +88,7 @@ export default function StatsPage() {
           }
         }
         
-        monthDays.push({ day: d, hasRecord })
+        monthDays.push({ day: d, hasRecord, hasWorkout, hasStretch })
       }
 
       months.push({ month: m, days: monthDays })
@@ -93,6 +96,47 @@ export default function StatsPage() {
 
     return months
   }, [year, dailyStats, activeTab])
+
+  // 拉伸频率统计（N天/次）
+  const stretchFrequency = useMemo(() => {
+    const now = new Date()
+    const currentYear = now.getFullYear()
+    const currentMonth = now.getMonth()
+    
+    // 月度频率
+    let monthDays: number
+    if (year === currentYear && month === currentMonth) {
+      monthDays = now.getDate()
+    } else if (year < currentYear || (year === currentYear && month < currentMonth)) {
+      monthDays = new Date(year, month + 1, 0).getDate()
+    } else {
+      monthDays = new Date(year, month + 1, 0).getDate()
+    }
+    
+    const monthlyStretchCount = stats.stretchCount || 0
+    const monthFreq = monthlyStretchCount > 0 ? Math.round(monthDays / monthlyStretchCount) : 0
+    
+    // 年度频率
+    let yearDays: number
+    if (year === currentYear) {
+      const startOfYear = new Date(year, 0, 1)
+      yearDays = Math.ceil((now.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24)) + 1
+    } else if (year < currentYear) {
+      yearDays = (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)) ? 366 : 365
+    } else {
+      yearDays = (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)) ? 366 : 365
+    }
+    
+    // 统计该年拉伸总次数
+    const yearStretchCount = records.filter(r => {
+      const d = new Date(r.date)
+      return d.getFullYear() === year && r.category === "拉伸"
+    }).reduce((sum, r) => sum + r.duration, 0)
+    
+    const yearFreq = yearStretchCount > 0 ? Math.round(yearDays / yearStretchCount) : 0
+    
+    return { monthFreq, yearFreq }
+  }, [records, year, month, stats.stretchCount])
 
   const navigatePrev = () => {
     const newDate = new Date(currentDate)
@@ -199,7 +243,7 @@ export default function StatsPage() {
             </span>
           </div>
 
-          <div className="grid grid-cols-4 gap-2">
+          <div className={`grid gap-2 ${activeTab === "拉伸" ? "grid-cols-4" : "grid-cols-4"}`}>
             <div className="text-center p-2 bg-muted/50 rounded-xl">
               <div className="text-2xl font-bold text-foreground">{stats.totalDays}</div>
               <div className="text-[10px] text-muted-foreground">打卡天数</div>
@@ -221,6 +265,22 @@ export default function StatsPage() {
                 <div className="text-2xl font-bold text-foreground">{stats.avgMinutesPerDay}</div>
                 <div className="text-[10px] text-muted-foreground">日均</div>
               </div>
+            )}
+            {activeTab === "拉伸" && (
+              <>
+                <div className="text-center p-2 bg-teal-50/50 rounded-xl">
+                  <div className="text-2xl font-bold text-teal-600">
+                    {stretchFrequency.monthFreq || "-"}
+                  </div>
+                  <div className="text-[10px] text-teal-600/70">天月均/次</div>
+                </div>
+                <div className="text-center p-2 bg-teal-50/50 rounded-xl">
+                  <div className="text-2xl font-bold text-teal-600">
+                    {stretchFrequency.yearFreq || "-"}
+                  </div>
+                  <div className="text-[10px] text-teal-600/70">天年均/次</div>
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -293,6 +353,12 @@ export default function StatsPage() {
                   const recordInfo = getDayRecordInfo(day)
                   const hasRecord = !!recordInfo
                   const isTodayCell = isToday(day)
+                  
+                  // 获取当天锻炼和拉伸的具体数据
+                  const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+                  const dayData = dailyStats.get(dateStr)
+                  const hasWorkout = dayData ? dayData.workout > 0 : false
+                  const hasStretch = dayData ? dayData.stretch > 0 : false
 
                   return (
                     <div
@@ -306,6 +372,17 @@ export default function StatsPage() {
                       `}
                     >
                       <span className="font-medium">{day}</span>
+                      {/* 在"全部"选项卡下显示区分点 */}
+                      {activeTab === "全部" && (hasWorkout || hasStretch) && (
+                        <div className="absolute -bottom-1 flex gap-0.5">
+                          {hasWorkout && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+                          )}
+                          {hasStretch && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-teal-500" />
+                          )}
+                        </div>
+                      )}
                       {isTodayCell && (
                         <span className="absolute -bottom-3.5 text-[8px] text-muted-foreground">今天</span>
                       )}
