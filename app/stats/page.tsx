@@ -1,12 +1,16 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { BottomNav } from "@/components/bottom-nav"
-import { getRecords, getMonthlyStats, getDailyStats, getYearlyMonthlyStats } from "@/lib/storage"
+import { getDailyStats, getMonthlyStats, getRecords } from "@/lib/storage"
+import { loadCloudRecords } from "@/lib/records-api"
 import type { CheckInRecord } from "@/types"
 
 type TabType = "全部" | "锻炼" | "拉伸"
+
+const tabs: TabType[] = ["全部", "锻炼", "拉伸"]
+const weekDays = ["一", "二", "三", "四", "五", "六", "日"]
 
 export default function StatsPage() {
   const [records, setRecords] = useState<CheckInRecord[]>([])
@@ -16,215 +20,142 @@ export default function StatsPage() {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    try {
-      const data = getRecords()
-      setRecords(data)
-    } catch (err) {
-      console.error("加载数据失败:", err)
-      setRecords([])
-    } finally {
-      setIsLoading(false)
+    let isMounted = true
+
+    loadCloudRecords()
+      .then((data) => {
+        if (isMounted) setRecords(data)
+      })
+      .catch(() => {
+        if (isMounted) setRecords(getRecords())
+      })
+      .finally(() => {
+        if (isMounted) setIsLoading(false)
+      })
+
+    return () => {
+      isMounted = false
     }
   }, [])
 
   const year = currentDate.getFullYear()
   const month = currentDate.getMonth()
-
-  // 统计数据
-  const stats = useMemo(() => {
-    const category = activeTab === "全部" ? undefined : activeTab
-    return getMonthlyStats(records, year, month, category)
-  }, [records, year, month, activeTab])
-
+  const category = activeTab === "全部" ? undefined : activeTab
+  const stats = useMemo(() => getMonthlyStats(records, year, month, category), [records, year, month, category])
   const dailyStats = useMemo(() => getDailyStats(records), [records])
 
-  // 年度每月数据（用于图表）
-  const yearlyData = useMemo(() => {
-    const category = activeTab === "全部" ? undefined : activeTab
-    return getYearlyMonthlyStats(records, year, category)
-  }, [records, year, activeTab])
-
-  const maxYearlyValue = Math.max(...yearlyData, 1)
-
-  // 月历数据
   const monthCalendar = useMemo(() => {
     const firstDay = new Date(year, month, 1)
     const lastDay = new Date(year, month + 1, 0)
     const startDayOfWeek = (firstDay.getDay() + 6) % 7
+    const days: (number | null)[] = Array(startDayOfWeek).fill(null)
 
-    const days: (number | null)[] = []
-    for (let i = 0; i < startDayOfWeek; i++) {
-      days.push(null)
+    for (let day = 1; day <= lastDay.getDate(); day += 1) {
+      days.push(day)
     }
-    for (let i = 1; i <= lastDay.getDate(); i++) {
-      days.push(i)
-    }
+
     return days
   }, [year, month])
 
-  // 年历数据
   const yearCalendar = useMemo(() => {
-    const months: { month: number; days: { day: number; hasRecord: boolean; hasWorkout: boolean; hasStretch: boolean }[] }[] = []
-
-    for (let m = 0; m < 12; m++) {
-      const daysInMonth = new Date(year, m + 1, 0).getDate()
-      const monthDays: { day: number; hasRecord: boolean; hasWorkout: boolean; hasStretch: boolean }[] = []
-
-      for (let d = 1; d <= daysInMonth; d++) {
-        const dateStr = `${year}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`
+    return Array.from({ length: 12 }, (_, monthIndex) => {
+      const daysInMonth = new Date(year, monthIndex + 1, 0).getDate()
+      const days = Array.from({ length: daysInMonth }, (_, dayIndex) => {
+        const day = dayIndex + 1
+        const dateStr = `${year}-${String(monthIndex + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
         const dayData = dailyStats.get(dateStr)
-        
-        let hasRecord = false
-        const hasWorkout = dayData ? dayData.workout > 0 : false
-        const hasStretch = dayData ? dayData.stretch > 0 : false
-        
-        if (dayData) {
-          if (activeTab === "全部") {
-            hasRecord = dayData.total > 0 || dayData.stretch > 0
-          } else if (activeTab === "锻炼") {
-            hasRecord = dayData.workout > 0
-          } else {
-            hasRecord = dayData.stretch > 0
-          }
-        }
-        
-        monthDays.push({ day: d, hasRecord, hasWorkout, hasStretch })
-      }
+        const hasWorkout = Boolean(dayData?.workout)
+        const hasStretch = Boolean(dayData?.stretch)
+        const hasRecord =
+          activeTab === "全部" ? hasWorkout || hasStretch : activeTab === "锻炼" ? hasWorkout : hasStretch
 
-      months.push({ month: m, days: monthDays })
-    }
+        return { day, hasRecord }
+      })
 
-    return months
+      return { month: monthIndex, days }
+    })
   }, [year, dailyStats, activeTab])
 
-  // 拉伸频率统计（N天/次）
   const stretchFrequency = useMemo(() => {
-    const now = new Date()
-    const currentYear = now.getFullYear()
-    const currentMonth = now.getMonth()
-    
-    // 月度频率
-    let monthDays: number
-    if (year === currentYear && month === currentMonth) {
-      monthDays = now.getDate()
-    } else if (year < currentYear || (year === currentYear && month < currentMonth)) {
-      monthDays = new Date(year, month + 1, 0).getDate()
-    } else {
-      monthDays = new Date(year, month + 1, 0).getDate()
+    const today = new Date()
+    const isCurrentMonth = year === today.getFullYear() && month === today.getMonth()
+    const monthDays = isCurrentMonth ? today.getDate() : new Date(year, month + 1, 0).getDate()
+    const yearDays =
+      year === today.getFullYear()
+        ? Math.ceil((today.getTime() - new Date(year, 0, 1).getTime()) / 86400000) + 1
+        : year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+          ? 366
+          : 365
+    const yearStretchCount = records
+      .filter((record) => new Date(record.date).getFullYear() === year && record.category === "拉伸")
+      .reduce((sum, record) => sum + record.duration, 0)
+
+    return {
+      monthFreq: stats.stretchCount > 0 ? Math.round(monthDays / stats.stretchCount) : 0,
+      yearFreq: yearStretchCount > 0 ? Math.round(yearDays / yearStretchCount) : 0,
     }
-    
-    const monthlyStretchCount = stats.stretchCount || 0
-    const monthFreq = monthlyStretchCount > 0 ? Math.round(monthDays / monthlyStretchCount) : 0
-    
-    // 年度频率
-    let yearDays: number
-    if (year === currentYear) {
-      const startOfYear = new Date(year, 0, 1)
-      yearDays = Math.ceil((now.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24)) + 1
-    } else if (year < currentYear) {
-      yearDays = (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)) ? 366 : 365
-    } else {
-      yearDays = (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)) ? 366 : 365
-    }
-    
-    // 统计该年拉伸总次数
-    const yearStretchCount = records.filter(r => {
-      const d = new Date(r.date)
-      return d.getFullYear() === year && r.category === "拉伸"
-    }).reduce((sum, r) => sum + r.duration, 0)
-    
-    const yearFreq = yearStretchCount > 0 ? Math.round(yearDays / yearStretchCount) : 0
-    
-    return { monthFreq, yearFreq }
   }, [records, year, month, stats.stretchCount])
 
-  const navigatePrev = () => {
-    const newDate = new Date(currentDate)
+  const navigate = (direction: -1 | 1) => {
+    const nextDate = new Date(currentDate)
+
     if (viewMode === "month") {
-      newDate.setMonth(newDate.getMonth() - 1)
+      nextDate.setMonth(nextDate.getMonth() + direction)
     } else {
-      newDate.setFullYear(newDate.getFullYear() - 1)
+      nextDate.setFullYear(nextDate.getFullYear() + direction)
     }
-    setCurrentDate(newDate)
+
+    setCurrentDate(nextDate)
   }
 
-  const navigateNext = () => {
-    const newDate = new Date(currentDate)
-    if (viewMode === "month") {
-      newDate.setMonth(newDate.getMonth() + 1)
-    } else {
-      newDate.setFullYear(newDate.getFullYear() + 1)
-    }
-    setCurrentDate(newDate)
-  }
-
-  const today = new Date()
   const isToday = (day: number) => {
-    return (
-      day === today.getDate() &&
-      month === today.getMonth() &&
-      year === today.getFullYear()
-    )
+    const today = new Date()
+    return day === today.getDate() && month === today.getMonth() && year === today.getFullYear()
   }
 
   const getDayRecordInfo = (day: number) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
     const dayData = dailyStats.get(dateStr)
     if (!dayData) return null
-    
+
     if (activeTab === "锻炼") return dayData.workout > 0 ? dayData : null
     if (activeTab === "拉伸") return dayData.stretch > 0 ? dayData : null
-    return dayData.total > 0 || dayData.stretch > 0 ? dayData : null
+    return dayData.workout > 0 || dayData.stretch > 0 ? dayData : null
   }
 
-  const weekDays = ["一", "二", "三", "四", "五", "六", "日"]
-  const tabs: TabType[] = ["全部", "锻炼", "拉伸"]
-
   const getTabColor = (tab: TabType) => {
-    switch (tab) {
-      case "锻炼": return "text-orange-600 border-orange-500 bg-orange-50"
-      case "拉伸": return "text-teal-600 border-teal-500 bg-teal-50"
-      default: return "text-foreground border-foreground bg-muted"
-    }
+    if (tab === "锻炼") return "text-orange-600 border-orange-500 bg-orange-50"
+    if (tab === "拉伸") return "text-teal-600 border-teal-500 bg-teal-50"
+    return "text-foreground border-foreground bg-muted"
   }
 
   const getAccentColor = () => {
-    switch (activeTab) {
-      case "锻炼": return "bg-orange-200 text-orange-700"
-      case "拉伸": return "bg-teal-200 text-teal-700"
-      default: return "bg-rose-200 text-rose-700"
-    }
+    if (activeTab === "锻炼") return "bg-orange-200 text-orange-700"
+    if (activeTab === "拉伸") return "bg-teal-200 text-teal-700"
+    return "bg-rose-200 text-rose-700"
   }
 
   return (
     <main className="min-h-screen bg-background pb-24">
-      <header className="sticky top-0 bg-background/95 backdrop-blur-lg border-b border-border z-40">
-        <div className="max-w-md mx-auto px-4 py-4">
-          <h1 className="text-xl font-bold text-foreground text-center">统计概览</h1>
+      <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-lg">
+        <div className="mx-auto max-w-md px-4 py-4">
+          <h1 className="text-center text-xl font-bold text-foreground">统计概览</h1>
         </div>
       </header>
 
-      <div className="max-w-md mx-auto px-4 py-4 space-y-4">
-        {/* 加载态 */}
+      <div className="mx-auto max-w-md space-y-4 px-4 py-4">
         {isLoading ? (
-          <div className="text-center py-12 text-muted-foreground text-sm">
-            加载中...
-          </div>
+          <div className="py-12 text-center text-sm text-muted-foreground">加载中...</div>
         ) : (
           <>
-            {/* Tab 切换 */}
-            <div className="flex gap-2 bg-muted/50 p-1 rounded-xl">
+            <div className="flex gap-2 rounded-xl bg-muted/50 p-1">
               {tabs.map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
                   className={`
-                    flex-1 py-2 px-3 rounded-lg text-sm font-medium
-                    transition-all duration-200
-                    ${activeTab === tab
-                      ? getTabColor(tab)
-                      : "text-muted-foreground hover:text-foreground"
-                    }
+                    flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200
+                    ${activeTab === tab ? getTabColor(tab) : "text-muted-foreground hover:text-foreground"}
                   `}
                 >
                   {tab}
@@ -232,193 +163,153 @@ export default function StatsPage() {
               ))}
             </div>
 
-        {/* 统计卡片 */}
-        <div className="bg-card rounded-2xl p-4 border border-border shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-sm text-muted-foreground">
-              {year}年{month + 1}月
-            </span>
-            <span className="text-xs text-muted-foreground">
-              年度累计 {stats.yearTotalDays} 天
-            </span>
-          </div>
+            <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+              <div className="mb-3 flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">
+                  {year}年{month + 1}月
+                </span>
+                <span className="text-xs text-muted-foreground">年度累计 {stats.yearTotalDays} 天</span>
+              </div>
 
-          <div className={`grid gap-2 ${activeTab === "拉伸" ? "grid-cols-4" : "grid-cols-4"}`}>
-            <div className="text-center p-2 bg-muted/50 rounded-xl">
-              <div className="text-2xl font-bold text-foreground">{stats.totalDays}</div>
-              <div className="text-[10px] text-muted-foreground">打卡天数</div>
-            </div>
-            {activeTab !== "拉伸" && (
-              <div className="text-center p-2 bg-orange-50 rounded-xl">
-                <div className="text-2xl font-bold text-orange-600">{stats.workoutMinutes}</div>
-                <div className="text-[10px] text-orange-600/70">分钟</div>
-              </div>
-            )}
-            {activeTab !== "锻炼" && (
-              <div className="text-center p-2 bg-teal-50 rounded-xl">
-                <div className="text-2xl font-bold text-teal-600">{stats.stretchCount}</div>
-                <div className="text-[10px] text-teal-600/70">拉伸次</div>
-              </div>
-            )}
-            {activeTab !== "拉伸" && (
-              <div className="text-center p-2 bg-muted/50 rounded-xl">
-                <div className="text-2xl font-bold text-foreground">{stats.avgMinutesPerDay}</div>
-                <div className="text-[10px] text-muted-foreground">日均</div>
-              </div>
-            )}
-            {activeTab === "拉伸" && (
-              <>
-                <div className="text-center p-2 bg-teal-50/50 rounded-xl">
-                  <div className="text-2xl font-bold text-teal-600">
-                    {stretchFrequency.monthFreq || "-"}
-                  </div>
-                  <div className="text-[10px] text-teal-600/70">天月均/次</div>
+              <div className="grid grid-cols-4 gap-2">
+                <div className="rounded-xl bg-muted/50 p-2 text-center">
+                  <div className="text-2xl font-bold text-foreground">{stats.totalDays}</div>
+                  <div className="text-[10px] text-muted-foreground">打卡天数</div>
                 </div>
-                <div className="text-center p-2 bg-teal-50/50 rounded-xl">
-                  <div className="text-2xl font-bold text-teal-600">
-                    {stretchFrequency.yearFreq || "-"}
-                  </div>
-                  <div className="text-[10px] text-teal-600/70">天年均/次</div>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
-
-
-        {/* 日历区域 */}
-        <div className="bg-card rounded-2xl p-4 border border-border shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-1">
-              <button
-                onClick={navigatePrev}
-                className="p-1.5 rounded-lg hover:bg-muted transition-colors active:scale-95"
-              >
-                <ChevronLeft className="w-5 h-5 text-muted-foreground" />
-              </button>
-              <span className="text-sm font-semibold text-foreground min-w-[80px] text-center">
-                {viewMode === "month"
-                  ? `${year}年${month + 1}月`
-                  : `${year}年`}
-              </span>
-              <button
-                onClick={navigateNext}
-                className="p-1.5 rounded-lg hover:bg-muted transition-colors active:scale-95"
-              >
-                <ChevronRight className="w-5 h-5 text-muted-foreground" />
-              </button>
-            </div>
-
-            <div className="flex gap-1 bg-muted rounded-lg p-0.5">
-              <button
-                onClick={() => setViewMode("month")}
-                className={`px-3 py-1 text-xs rounded-md transition-all ${
-                  viewMode === "month"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground"
-                }`}
-              >
-                月
-              </button>
-              <button
-                onClick={() => setViewMode("year")}
-                className={`px-3 py-1 text-xs rounded-md transition-all ${
-                  viewMode === "year"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground"
-                }`}
-              >
-                年
-              </button>
-            </div>
-          </div>
-
-          {viewMode === "month" ? (
-            <div>
-              <div className="grid grid-cols-7 gap-1 mb-2">
-                {weekDays.map((day) => (
-                  <div key={day} className="text-center text-[10px] text-muted-foreground py-1">
-                    {day}
-                  </div>
-                ))}
-              </div>
-
-              <div className="grid grid-cols-7 gap-1">
-                {monthCalendar.map((day, index) => {
-                  if (day === null) {
-                    return <div key={`empty-${index}`} className="aspect-square" />
-                  }
-
-                  const recordInfo = getDayRecordInfo(day)
-                  const hasRecord = !!recordInfo
-                  const isTodayCell = isToday(day)
-                  
-                  // 获取当天锻炼和拉伸的具体数据
-                  const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
-                  const dayData = dailyStats.get(dateStr)
-                  const hasWorkout = dayData ? dayData.workout > 0 : false
-                  const hasStretch = dayData ? dayData.stretch > 0 : false
-
-                  return (
-                    <div
-                      key={day}
-                      className={`
-                        aspect-square flex flex-col items-center justify-center rounded-full
-                        text-xs relative transition-all duration-200
-                        ${hasRecord ? getAccentColor() : "text-foreground"}
-                        ${isTodayCell && !hasRecord ? "ring-2 ring-foreground/30 ring-inset" : ""}
-                        ${!hasRecord && !isTodayCell ? "border border-dashed border-muted-foreground/20" : ""}
-                      `}
-                    >
-                      <span className="font-medium">{day}</span>
-                      {/* 在"全部"选项卡下显示区分点 */}
-                      {activeTab === "全部" && (hasWorkout || hasStretch) && (
-                        <div className="absolute -bottom-1 flex gap-0.5">
-                          {hasWorkout && (
-                            <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
-                          )}
-                          {hasStretch && (
-                            <span className="w-1.5 h-1.5 rounded-full bg-teal-500" />
-                          )}
-                        </div>
-                      )}
-                      {isTodayCell && (
-                        <span className="absolute -bottom-3.5 text-[8px] text-muted-foreground">今天</span>
-                      )}
+                {activeTab !== "拉伸" && (
+                  <>
+                    <div className="rounded-xl bg-orange-50 p-2 text-center">
+                      <div className="text-2xl font-bold text-orange-600">{stats.workoutMinutes}</div>
+                      <div className="text-[10px] text-orange-600/70">分钟</div>
                     </div>
-                  )
-                })}
+                    <div className="rounded-xl bg-muted/50 p-2 text-center">
+                      <div className="text-2xl font-bold text-foreground">{stats.avgMinutesPerDay}</div>
+                      <div className="text-[10px] text-muted-foreground">日均</div>
+                    </div>
+                  </>
+                )}
+                {activeTab !== "锻炼" && (
+                  <div className="rounded-xl bg-teal-50 p-2 text-center">
+                    <div className="text-2xl font-bold text-teal-600">{stats.stretchCount}</div>
+                    <div className="text-[10px] text-teal-600/70">拉伸次数</div>
+                  </div>
+                )}
+                {activeTab === "拉伸" && (
+                  <>
+                    <div className="rounded-xl bg-teal-50/50 p-2 text-center">
+                      <div className="text-2xl font-bold text-teal-600">{stretchFrequency.monthFreq || "-"}</div>
+                      <div className="text-[10px] text-teal-600/70">天/次</div>
+                    </div>
+                    <div className="rounded-xl bg-teal-50/50 p-2 text-center">
+                      <div className="text-2xl font-bold text-teal-600">{stretchFrequency.yearFreq || "-"}</div>
+                      <div className="text-[10px] text-teal-600/70">年均</div>
+                    </div>
+                  </>
+                )}
               </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-3 gap-3">
-              {yearCalendar.map(({ month: m, days }) => (
-                <div key={m} className="space-y-1">
-                  <span className="text-xs font-medium text-muted-foreground">{m + 1}月</span>
-                  <div className="grid grid-cols-7 gap-[2px]">
-                    {days.map(({ day, hasRecord }) => (
-                      <div
-                        key={day}
-                        className={`
-                          w-[6px] h-[6px] rounded-[1px] transition-colors
-                          ${hasRecord
-                            ? activeTab === "锻炼"
-                              ? "bg-orange-400"
-                              : activeTab === "拉伸"
-                                ? "bg-teal-400"
-                                : "bg-rose-300"
-                            : "bg-muted"
-                          }
-                        `}
-                      />
+            </section>
+
+            <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-1">
+                  <button onClick={() => navigate(-1)} className="rounded-lg p-1.5 transition-colors hover:bg-muted active:scale-95">
+                    <ChevronLeft className="h-5 w-5 text-muted-foreground" />
+                  </button>
+                  <span className="min-w-[80px] text-center text-sm font-semibold text-foreground">
+                    {viewMode === "month" ? `${year}年${month + 1}月` : `${year}年`}
+                  </span>
+                  <button onClick={() => navigate(1)} className="rounded-lg p-1.5 transition-colors hover:bg-muted active:scale-95">
+                    <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                  </button>
+                </div>
+
+                <div className="flex gap-1 rounded-lg bg-muted p-0.5">
+                  {(["month", "year"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      onClick={() => setViewMode(mode)}
+                      className={`rounded-md px-3 py-1 text-xs transition-all ${
+                        viewMode === mode ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
+                      }`}
+                    >
+                      {mode === "month" ? "月" : "年"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {viewMode === "month" ? (
+                <div>
+                  <div className="mb-2 grid grid-cols-7 gap-1">
+                    {weekDays.map((day) => (
+                      <div key={day} className="py-1 text-center text-[10px] text-muted-foreground">
+                        {day}
+                      </div>
                     ))}
                   </div>
+
+                  <div className="grid grid-cols-7 gap-1">
+                    {monthCalendar.map((day, index) => {
+                      if (day === null) return <div key={`empty-${index}`} className="aspect-square" />
+
+                      const recordInfo = getDayRecordInfo(day)
+                      const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+                      const dayData = dailyStats.get(dateStr)
+                      const hasWorkout = Boolean(dayData?.workout)
+                      const hasStretch = Boolean(dayData?.stretch)
+                      const todayCell = isToday(day)
+
+                      return (
+                        <div
+                          key={day}
+                          className={`
+                            relative flex aspect-square flex-col items-center justify-center rounded-full text-xs transition-all duration-200
+                            ${recordInfo ? getAccentColor() : "text-foreground"}
+                            ${todayCell && !recordInfo ? "ring-2 ring-foreground/30 ring-inset" : ""}
+                            ${!recordInfo && !todayCell ? "border border-dashed border-muted-foreground/20" : ""}
+                          `}
+                        >
+                          <span className="font-medium">{day}</span>
+                          {activeTab === "全部" && (hasWorkout || hasStretch) && (
+                            <div className="absolute -bottom-1 flex gap-0.5">
+                              {hasWorkout && <span className="h-1.5 w-1.5 rounded-full bg-orange-500" />}
+                              {hasStretch && <span className="h-1.5 w-1.5 rounded-full bg-teal-500" />}
+                            </div>
+                          )}
+                          {todayCell && <span className="absolute -bottom-3.5 text-[8px] text-muted-foreground">今天</span>}
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-3">
+                  {yearCalendar.map(({ month: monthIndex, days }) => (
+                    <div key={monthIndex} className="space-y-1">
+                      <span className="text-xs font-medium text-muted-foreground">{monthIndex + 1}月</span>
+                      <div className="grid grid-cols-7 gap-[2px]">
+                        {days.map(({ day, hasRecord }) => (
+                          <div
+                            key={day}
+                            className={`
+                              h-[6px] w-[6px] rounded-[1px] transition-colors
+                              ${hasRecord
+                                ? activeTab === "锻炼"
+                                  ? "bg-orange-400"
+                                  : activeTab === "拉伸"
+                                    ? "bg-teal-400"
+                                    : "bg-rose-300"
+                                : "bg-muted"
+                              }
+                            `}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
           </>
         )}
       </div>

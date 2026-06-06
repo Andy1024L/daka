@@ -1,12 +1,19 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
-import { Download, Upload, Trash2, Pencil, X, AlertCircle } from "lucide-react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { AlertCircle, Download, Pencil, Trash2, Upload, X } from "lucide-react"
 import { BottomNav } from "@/components/bottom-nav"
 import { SuccessToast } from "@/components/success-toast"
-import { getRecords, deleteRecord, downloadXLSX, importFromXLSX, clearRecords, updateRecord } from "@/lib/storage"
-import type { CheckInRecord } from "@/types"
 import { Button } from "@/components/ui/button"
+import { downloadXLSX, getRecords, parseRecordsFromXLSX } from "@/lib/storage"
+import {
+  clearCloudRecords,
+  deleteCloudRecord,
+  importCloudRecords,
+  loadCloudRecords,
+  updateCloudRecord,
+} from "@/lib/records-api"
+import type { CheckInRecord } from "@/types"
 
 export default function DataPage() {
   const [records, setRecords] = useState<CheckInRecord[]>([])
@@ -21,100 +28,86 @@ export default function DataPage() {
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
+  const showToast = useCallback((message: string) => {
+    setToast({ visible: true, message })
+    window.setTimeout(() => setToast({ visible: false, message: "" }), 2000)
+  }, [])
+
+  const refreshRecords = useCallback(async () => {
     try {
-      const data = getRecords()
+      const data = await loadCloudRecords()
       setRecords(data)
       setError(null)
     } catch (err) {
-      console.error("加载数据失败:", err)
-      setError("加载数据失败")
-    } finally {
-      setIsLoading(false)
+      setRecords(getRecords())
+      setError(err instanceof Error ? err.message : "云端数据加载失败")
     }
   }, [])
 
-  const showToast = useCallback((message: string) => {
-    if (!message) return
-    setToast({ visible: true, message })
-    setTimeout(() => setToast({ visible: false, message: "" }), 2000)
-  }, [])
+  useEffect(() => {
+    refreshRecords().finally(() => setIsLoading(false))
+  }, [refreshRecords])
 
   const handleExport = async () => {
     if (isExporting) return
+
     setIsExporting(true)
-    
     try {
-      await downloadXLSX()
+      await downloadXLSX(records)
       showToast("表格导出成功")
-    } catch (err) {
-      console.error("导出失败:", err)
+    } catch {
       showToast("导出失败，请重试")
     } finally {
       setIsExporting(false)
     }
   }
 
-  const handleImportClick = () => {
-    if (isImporting) return
-    fileInputRef.current?.click()
-  }
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
     if (!file) return
-    
+
     setIsImporting(true)
-    
     try {
-      const reader = new FileReader()
-      reader.onload = async (event) => {
-        try {
-          const buffer = event.target?.result as ArrayBuffer
-          if (!buffer) {
-            showToast("读取文件失败")
-            setIsImporting(false)
-            return
-          }
-          
-          const mode = records.length > 0 ? "merge" : "replace"
-          const count = await importFromXLSX(buffer, mode)
-          setRecords(getRecords())
-          showToast(`导入 ${count} 条记录`)
-        } catch (err) {
-          console.error("导入失败:", err)
-          showToast("导入失败，请检查文件格式")
-        } finally {
-          setIsImporting(false)
-        }
+      const buffer = await file.arrayBuffer()
+      const mode = records.length > 0 ? "merge" : "replace"
+      const importedRecords = await parseRecordsFromXLSX(buffer, mode === "merge" ? records : [])
+      const nextRecords = mode === "replace" ? importedRecords : [...records, ...importedRecords]
+
+      if (mode === "replace") {
+        await clearCloudRecords()
       }
-      reader.onerror = () => {
-        showToast("读取文件失败")
-        setIsImporting(false)
-      }
-      reader.readAsArrayBuffer(file)
-    } catch (err) {
-      console.error("导入失败:", err)
-      showToast("导入失败，请重试")
+      await importCloudRecords(nextRecords)
+      await refreshRecords()
+      showToast(`导入 ${importedRecords.length} 条记录`)
+    } catch {
+      showToast("导入失败，请检查文件格式")
+    } finally {
       setIsImporting(false)
+      event.target.value = ""
     }
-    
-    e.target.value = ""
   }
 
-  const handleClear = () => {
-    clearRecords()
-    setRecords([])
+  const handleClear = async () => {
     setShowConfirm(false)
-    showToast("数据已清除")
+    try {
+      await clearCloudRecords()
+      await refreshRecords()
+      showToast("数据已清除")
+    } catch {
+      showToast("清除失败，请重试")
+    }
   }
 
   const handleDeleteRecord = (id: string) => {
-    const success = deleteRecord(id)
-    if (success) {
-      setRecords(getRecords())
-      showToast("记录已删除")
-    }
+    const previousRecords = records
+    setRecords((current) => current.filter((record) => record.id !== id))
+
+    deleteCloudRecord(id)
+      .then(() => showToast("记录已删除"))
+      .catch(() => {
+        setRecords(previousRecords)
+        showToast("删除失败，请重试")
+      })
   }
 
   const handleEditClick = (record: CheckInRecord) => {
@@ -125,71 +118,60 @@ export default function DataPage() {
 
   const handleEditSave = () => {
     if (!editingRecord) return
-    
-    const newDate = editDate.trim()
-    const newDuration = parseInt(editDuration)
-    
-    if (!newDate || isNaN(newDuration) || newDuration <= 0) {
+
+    const duration = Number(editDuration)
+    if (!editDate || Number.isNaN(duration) || duration <= 0) {
       showToast("请输入有效数据")
       return
     }
-    
-    updateRecord(editingRecord.id, { date: newDate, duration: newDuration })
-    setRecords(getRecords())
+
+    const previousRecords = records
+    setRecords((current) =>
+      current.map((record) => (record.id === editingRecord.id ? { ...record, date: editDate, duration } : record))
+    )
     setEditingRecord(null)
     showToast("记录已更新")
-  }
 
-  const handleEditCancel = () => {
-    setEditingRecord(null)
+    updateCloudRecord(editingRecord.id, { date: editDate, duration }).catch(() => {
+      setRecords(previousRecords)
+      showToast("更新失败，请重试")
+    })
   }
 
   const formatTime = (timestamp: number) => {
-    if (!timestamp || isNaN(timestamp)) return "00:00"
     const date = new Date(timestamp)
-    if (isNaN(date.getTime())) return "00:00"
+    if (Number.isNaN(date.getTime())) return "00:00"
+
     return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`
   }
 
-  // 使用 spread 避免修改原数组
   const sortedRecords = [...records].sort((a, b) => b.timestamp - a.timestamp)
 
   return (
     <main className="min-h-screen bg-background pb-24">
-      <header className="sticky top-0 bg-background/95 backdrop-blur-lg border-b border-border z-40">
-        <div className="max-w-md mx-auto px-4 py-4">
-          <h1 className="text-xl font-bold text-foreground text-center">数据管理</h1>
+      <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-lg">
+        <div className="mx-auto max-w-md px-4 py-4">
+          <h1 className="text-center text-xl font-bold text-foreground">数据管理</h1>
         </div>
       </header>
 
-      <div className="max-w-md mx-auto px-4 py-4 space-y-4">
-        {/* 错误提示 */}
+      <div className="mx-auto max-w-md space-y-4 px-4 py-4">
         {error && (
-          <div className="bg-destructive/10 text-destructive rounded-xl p-4 flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 flex-shrink-0" />
+          <div className="flex items-center gap-3 rounded-xl bg-destructive/10 p-4 text-destructive">
+            <AlertCircle className="h-5 w-5 flex-shrink-0" />
             <span className="text-sm">{error}</span>
           </div>
         )}
 
-        <div className="bg-card rounded-2xl p-4 border border-border shadow-sm">
-          <h2 className="text-sm font-medium text-muted-foreground mb-3">数据管理</h2>
+        <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+          <h2 className="mb-3 text-sm font-medium text-muted-foreground">数据管理</h2>
           <div className="grid grid-cols-2 gap-2">
-            <Button
-              onClick={handleExport}
-              variant="outline"
-              disabled={isExporting || records.length === 0}
-              className="h-11 gap-2 text-sm"
-            >
-              <Download className="w-4 h-4" />
+            <Button onClick={handleExport} variant="outline" disabled={isExporting || records.length === 0} className="h-11 gap-2 text-sm">
+              <Download className="h-4 w-4" />
               {isExporting ? "导出中..." : "导出表格"}
             </Button>
-            <Button
-              onClick={handleImportClick}
-              variant="outline"
-              disabled={isImporting}
-              className="h-11 gap-2 text-sm"
-            >
-              <Upload className="w-4 h-4" />
+            <Button onClick={() => fileInputRef.current?.click()} variant="outline" disabled={isImporting} className="h-11 gap-2 text-sm">
+              <Upload className="h-4 w-4" />
               {isImporting ? "导入中..." : "导入表格"}
             </Button>
           </div>
@@ -199,173 +181,119 @@ export default function DataPage() {
               onClick={() => setShowConfirm(true)}
               variant="outline"
               disabled={records.length === 0}
-              className="w-full h-11 gap-2 text-sm mt-2 text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30 disabled:text-muted-foreground disabled:border-border"
+              className="mt-2 h-11 w-full gap-2 border-destructive/30 text-sm text-destructive hover:bg-destructive/10 hover:text-destructive disabled:border-border disabled:text-muted-foreground"
             >
-              <Trash2 className="w-4 h-4" />
+              <Trash2 className="h-4 w-4" />
               清除所有数据
             </Button>
           ) : (
-            <div className="flex gap-2 mt-2">
-              <Button
-                onClick={() => setShowConfirm(false)}
-                variant="outline"
-                className="flex-1 h-11 text-sm"
-              >
+            <div className="mt-2 flex gap-2">
+              <Button onClick={() => setShowConfirm(false)} variant="outline" className="h-11 flex-1 text-sm">
                 取消
               </Button>
-              <Button
-                onClick={handleClear}
-                variant="destructive"
-                className="flex-1 h-11 text-sm"
-              >
+              <Button onClick={handleClear} variant="destructive" className="h-11 flex-1 text-sm">
                 确认清除
               </Button>
             </div>
           )}
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx,.xls"
-            onChange={handleFileChange}
-            className="hidden"
-          />
-        </div>
+          <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleFileChange} className="hidden" />
+        </section>
 
-        <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
-          <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-            <h2 className="text-sm font-medium text-muted-foreground">
-              记录列表
-            </h2>
-            <span className="text-xs text-muted-foreground">
-              共 {sortedRecords.length} 条
-            </span>
+        <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+          <div className="flex items-center justify-between border-b border-border px-4 py-3">
+            <h2 className="text-sm font-medium text-muted-foreground">记录列表</h2>
+            <span className="text-xs text-muted-foreground">共 {sortedRecords.length} 条</span>
           </div>
 
-          <div className="max-h-[50vh] overflow-y-auto divide-y divide-border">
+          <div className="max-h-[50vh] divide-y divide-border overflow-y-auto">
             {isLoading ? (
-              <div className="text-center py-12 text-muted-foreground text-sm">
-                加载中...
-              </div>
+              <div className="py-12 text-center text-sm text-muted-foreground">加载中...</div>
             ) : sortedRecords.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground text-sm">
-                暂无记录
-              </div>
+              <div className="py-12 text-center text-sm text-muted-foreground">暂无记录</div>
             ) : (
               sortedRecords.map((record) => (
-                <div
-                  key={record.id}
-                  className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
-                >
-                  <div className="flex items-center gap-3 flex-1">
+                <div key={record.id} className="flex items-center justify-between p-4 transition-colors hover:bg-muted/50">
+                  <div className="flex flex-1 items-center gap-3">
                     <div
                       className={`
-                        w-10 h-10 rounded-xl flex items-center justify-center text-lg font-bold
-                        ${record.category === "锻炼"
-                          ? "bg-orange-100 text-orange-600"
-                          : "bg-teal-100 text-teal-600"
-                        }
+                        flex h-10 w-10 items-center justify-center rounded-xl text-lg font-bold
+                        ${record.category === "锻炼" ? "bg-orange-100 text-orange-600" : "bg-teal-100 text-teal-600"}
                       `}
                     >
                       {record.category === "锻炼" ? record.duration : `x${record.duration}`}
                     </div>
                     <div>
-                      <div className="font-medium text-foreground text-sm">
-                        {record.category}
-                      </div>
+                      <div className="text-sm font-medium text-foreground">{record.category}</div>
                       <div className="text-xs text-muted-foreground">
                         {record.date.replace(/-/g, "/")} {formatTime(record.timestamp)}
                       </div>
                     </div>
                   </div>
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleEditClick(record)
-                    }}
-                    className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors active:scale-90"
+                    onClick={() => handleEditClick(record)}
+                    className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-90"
                   >
-                    <Pencil className="w-4 h-4" />
+                    <Pencil className="h-4 w-4" />
                   </button>
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleDeleteRecord(record.id)
-                    }}
-                    className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors active:scale-90"
+                    onClick={() => handleDeleteRecord(record.id)}
+                    className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive active:scale-90"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
               ))
             )}
           </div>
-        </div>
+        </section>
       </div>
 
       <SuccessToast message={toast.message} isVisible={toast.visible} />
 
       {editingRecord && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-card rounded-2xl w-full max-w-sm shadow-2xl">
-            <div className="flex items-center justify-between p-4 border-b border-border">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-card shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border p-4">
               <h3 className="text-lg font-bold text-foreground">编辑记录</h3>
-              <button
-                onClick={handleEditCancel}
-                className="p-2 rounded-lg hover:bg-muted transition-colors"
-              >
-                <X className="w-5 h-5 text-muted-foreground" />
+              <button onClick={() => setEditingRecord(null)} className="rounded-lg p-2 transition-colors hover:bg-muted">
+                <X className="h-5 w-5 text-muted-foreground" />
               </button>
             </div>
-            
-            <div className="p-4 space-y-4">
+
+            <div className="space-y-4 p-4">
               <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-2">
-                  类型
-                </label>
-                <div className="px-3 py-2 bg-muted rounded-lg text-foreground font-medium">
-                  {editingRecord.category}
-                </div>
+                <label className="mb-2 block text-sm font-medium text-muted-foreground">类型</label>
+                <div className="rounded-lg bg-muted px-3 py-2 font-medium text-foreground">{editingRecord.category}</div>
               </div>
-              
               <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-2">
-                  日期
-                </label>
+                <label className="mb-2 block text-sm font-medium text-muted-foreground">日期</label>
                 <input
                   type="date"
                   value={editDate}
-                  onChange={(e) => setEditDate(e.target.value)}
-                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                  onChange={(event) => setEditDate(event.target.value)}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
-              
               <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-2">
+                <label className="mb-2 block text-sm font-medium text-muted-foreground">
                   {editingRecord.category === "锻炼" ? "时长（分钟）" : "次数"}
                 </label>
                 <input
                   type="number"
                   value={editDuration}
-                  onChange={(e) => setEditDuration(e.target.value)}
+                  onChange={(event) => setEditDuration(event.target.value)}
                   min="1"
-                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
             </div>
-            
-            <div className="p-4 flex gap-3">
-              <Button
-                onClick={handleEditCancel}
-                variant="outline"
-                className="flex-1"
-              >
+
+            <div className="flex gap-3 p-4">
+              <Button onClick={() => setEditingRecord(null)} variant="outline" className="flex-1">
                 取消
               </Button>
-              <Button
-                onClick={handleEditSave}
-                className="flex-1"
-              >
+              <Button onClick={handleEditSave} className="flex-1">
                 保存
               </Button>
             </div>

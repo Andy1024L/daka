@@ -1,7 +1,7 @@
 {
   "name": "每日打卡",
   "short_name": "打卡",
-  "description": "极简个人打卡应用 - 记录体能训练与拉伸",
+  "description": "记录锻炼和拉伸的个人打卡工具",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

@@ -1,57 +1,52 @@
 "use client"
 
-import { useState, useCallback } from "react"
-import { Dumbbell, Sparkles, Check } from "lucide-react"
+import { useCallback, useState } from "react"
+import { Check, Dumbbell, Sparkles } from "lucide-react"
 import { BottomNav } from "@/components/bottom-nav"
 import { SuccessToast } from "@/components/success-toast"
-import { addRecord } from "@/lib/storage"
+import { createOptimisticRecord, saveCloudRecord } from "@/lib/records-api"
 
 export default function HomePage() {
   const [toast, setToast] = useState({ visible: false, message: "" })
-  const [animatingBtn, setAnimatingBtn] = useState<string | null>(null)
+  const [animatingButton, setAnimatingButton] = useState<string | null>(null)
 
   const showToast = useCallback((message: string) => {
-    if (!message) return
     setToast({ visible: true, message })
-    setTimeout(() => setToast({ visible: false, message: "" }), 2000)
+    window.setTimeout(() => setToast({ visible: false, message: "" }), 2000)
   }, [])
 
   const handleWorkoutCheckIn = useCallback(
     (duration: number) => {
-      const record = addRecord("锻炼", duration)
-      if (record) {
-        setAnimatingBtn(`workout-${duration}`)
-        setTimeout(() => setAnimatingBtn(null), 600)
-        showToast(`锻炼 ${duration}分钟`)
-      } else {
-        showToast("保存失败，请重试")
-      }
+      const record = createOptimisticRecord("锻炼", duration)
+
+      setAnimatingButton(`workout-${duration}`)
+      window.setTimeout(() => setAnimatingButton(null), 600)
+      showToast(`锻炼 ${duration} 分钟`)
+
+      saveCloudRecord(record).catch(() => {
+        showToast("云端保存失败，请稍后重试")
+      })
     },
     [showToast]
   )
 
   const handleStretchCheckIn = useCallback(
     (count: 1 | 2) => {
-      const record = addRecord("拉伸", count)
-      if (record) {
-        setAnimatingBtn(`stretch-${count}`)
-        setTimeout(() => setAnimatingBtn(null), 600)
-        showToast(`拉伸 x${count}`)
-      } else {
-        showToast("保存失败，请重试")
-      }
+      const record = createOptimisticRecord("拉伸", count)
+
+      setAnimatingButton(`stretch-${count}`)
+      window.setTimeout(() => setAnimatingButton(null), 600)
+      showToast(`拉伸 x${count}`)
+
+      saveCloudRecord(record).catch(() => {
+        showToast("云端保存失败，请稍后重试")
+      })
     },
     [showToast]
   )
 
-  const WorkoutButton = ({
-    duration,
-    isPrimary = false,
-  }: {
-    duration: number
-    isPrimary?: boolean
-  }) => {
-    const isAnimating = animatingBtn === `workout-${duration}`
+  const WorkoutButton = ({ duration, isPrimary = false }: { duration: number; isPrimary?: boolean }) => {
+    const isAnimating = animatingButton === `workout-${duration}`
 
     return (
       <button
@@ -62,21 +57,16 @@ export default function HomePage() {
             ? "bg-gradient-to-br from-orange-500 to-rose-500 col-span-3 h-28"
             : "bg-gradient-to-br from-orange-400 to-orange-500 h-20"
           }
-          flex flex-col items-center justify-center
-          text-white font-semibold shadow-lg
-          transition-all duration-200 ease-out
-          hover:scale-[1.02] hover:shadow-xl
-          active:scale-95
+          flex flex-col items-center justify-center text-white font-semibold shadow-lg
+          transition-all duration-200 ease-out hover:scale-[1.02] hover:shadow-xl active:scale-95
           ${isAnimating ? "ring-4 ring-white/50" : ""}
         `}
       >
-        <span className={`${isPrimary ? "text-4xl" : "text-2xl"} font-bold`}>
-          {duration}
-        </span>
+        <span className={`${isPrimary ? "text-4xl" : "text-2xl"} font-bold`}>{duration}</span>
         <span className={`${isPrimary ? "text-base" : "text-xs"} opacity-80`}>分钟</span>
         {isAnimating && (
           <div className="absolute inset-0 flex items-center justify-center bg-white/20">
-            <Check className="w-12 h-12 text-white animate-bounce" />
+            <Check className="h-12 w-12 animate-bounce text-white" />
           </div>
         )}
       </button>
@@ -84,19 +74,15 @@ export default function HomePage() {
   }
 
   const StretchButton = ({ count }: { count: 1 | 2 }) => {
-    const isAnimating = animatingBtn === `stretch-${count}`
+    const isAnimating = animatingButton === `stretch-${count}`
 
     return (
       <button
         onClick={() => handleStretchCheckIn(count)}
         className={`
-          relative overflow-hidden rounded-2xl h-24
-          bg-gradient-to-br from-teal-400 to-teal-500
-          flex flex-col items-center justify-center
-          text-white font-semibold shadow-lg
-          transition-all duration-200 ease-out
-          hover:scale-[1.02] hover:shadow-xl
-          active:scale-95
+          relative h-24 overflow-hidden rounded-2xl bg-gradient-to-br from-teal-400 to-teal-500
+          flex flex-col items-center justify-center text-white font-semibold shadow-lg
+          transition-all duration-200 ease-out hover:scale-[1.02] hover:shadow-xl active:scale-95
           ${isAnimating ? "ring-4 ring-white/50" : ""}
         `}
       >
@@ -104,7 +90,7 @@ export default function HomePage() {
         <span className="text-xs opacity-80">次</span>
         {isAnimating && (
           <div className="absolute inset-0 flex items-center justify-center bg-white/20">
-            <Check className="w-10 h-10 text-white animate-bounce" />
+            <Check className="h-10 w-10 animate-bounce text-white" />
           </div>
         )}
       </button>
@@ -113,18 +99,17 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-background pb-24">
-      <header className="sticky top-0 bg-background/95 backdrop-blur-lg border-b border-border z-40">
-        <div className="max-w-md mx-auto px-4 py-4">
-          <h1 className="text-xl font-bold text-foreground text-center">每日打卡</h1>
+      <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-lg">
+        <div className="mx-auto max-w-md px-4 py-4">
+          <h1 className="text-center text-xl font-bold text-foreground">每日打卡</h1>
         </div>
       </header>
 
-      <div className="max-w-md mx-auto px-4 py-6 space-y-6">
-        {/* 锻炼区块 */}
-        <div className="bg-card rounded-2xl p-5 border border-border shadow-sm">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="w-10 h-10 rounded-xl bg-orange-100 flex items-center justify-center">
-              <Dumbbell className="w-6 h-6 text-orange-600" />
+      <div className="mx-auto max-w-md space-y-6 px-4 py-6">
+        <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+          <div className="mb-5 flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-100">
+              <Dumbbell className="h-6 w-6 text-orange-600" />
             </div>
             <h2 className="text-lg font-bold text-foreground">锻炼</h2>
           </div>
@@ -135,13 +120,12 @@ export default function HomePage() {
             <WorkoutButton duration={60} />
             <WorkoutButton duration={120} />
           </div>
-        </div>
+        </section>
 
-        {/* 拉伸区块 */}
-        <div className="bg-card rounded-2xl p-5 border border-border shadow-sm">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="w-10 h-10 rounded-xl bg-teal-100 flex items-center justify-center">
-              <Sparkles className="w-6 h-6 text-teal-600" />
+        <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+          <div className="mb-5 flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-100">
+              <Sparkles className="h-6 w-6 text-teal-600" />
             </div>
             <h2 className="text-lg font-bold text-foreground">拉伸</h2>
           </div>
@@ -150,16 +134,15 @@ export default function HomePage() {
             <StretchButton count={1} />
             <StretchButton count={2} />
           </div>
-        </div>
+        </section>
       </div>
 
       <SuccessToast message={toast.message} isVisible={toast.visible} />
       <BottomNav />
 
-      {/* 版本号 */}
-      <div className="max-w-md mx-auto px-4 pb-24">
+      <div className="mx-auto max-w-md px-4 pb-24">
         <div className="flex items-center justify-center py-4">
-          <span className="text-xs text-muted-foreground/50">v1.2.0</span>
+          <span className="text-xs text-muted-foreground/50">v1.2.1</span>
         </div>
       </div>
     </main>

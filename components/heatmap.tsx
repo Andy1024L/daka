@@ -1,8 +1,8 @@
 "use client"
 
 import { useMemo } from "react"
-import type { CheckInRecord } from "@/types"
 import { getDailyStats } from "@/lib/storage"
+import type { CheckInRecord } from "@/types"
 
 interface HeatmapProps {
   records: CheckInRecord[]
@@ -38,44 +38,40 @@ export function Heatmap({ records, months }: HeatmapProps) {
       current.setDate(current.getDate() + 1)
     }
 
-    const weekCount = Math.ceil(allDates.length / 7)
-
-    return { dates: allDates, stats: dailyStats, weeks: weekCount }
+    return {
+      dates: allDates,
+      stats: dailyStats,
+      weeks: Math.ceil(allDates.length / 7),
+    }
   }, [records, months])
-
   const weekDays = ["日", "一", "二", "三", "四", "五", "六"]
 
   return (
     <div className="overflow-x-auto">
-      <div className="flex gap-1 min-w-fit">
-        <div className="flex flex-col gap-1 text-xs text-muted-foreground pr-2">
-          {weekDays.map((day, i) => (
-            <div key={i} className="h-3 flex items-center">
-              {i % 2 === 1 ? day : ""}
+      <div className="flex min-w-fit gap-1">
+        <div className="flex flex-col gap-1 pr-2 text-xs text-muted-foreground">
+          {weekDays.map((day, index) => (
+            <div key={day} className="flex h-3 items-center">
+              {index % 2 === 1 ? day : ""}
             </div>
           ))}
         </div>
-        
+
         <div className="flex gap-1">
           {Array.from({ length: weeks }).map((_, weekIndex) => (
             <div key={weekIndex} className="flex flex-col gap-1">
               {Array.from({ length: 7 }).map((_, dayIndex) => {
-                const dateIndex = weekIndex * 7 + dayIndex
-                const date = dates[dateIndex]
-                
-                if (!date || date > new Date()) {
-                  return <div key={dayIndex} className="w-3 h-3" />
-                }
+                const date = dates[weekIndex * 7 + dayIndex]
+                if (!date || date > new Date()) return <div key={dayIndex} className="h-3 w-3" />
 
                 const dateStr = formatDate(date)
-                const dayStats = stats.get(dateStr)
-                const total = dayStats?.total || 0
+                const total = stats.get(dateStr)?.total || 0
 
                 return (
                   <div
                     key={dayIndex}
-                    className={`w-3 h-3 rounded-sm ${getIntensityClass(total)} transition-colors cursor-default`}
-                    title={`${dateStr}: ${total}分钟`}
+                    className={`h-3 w-3 cursor-default rounded-sm ${getIntensityClass(total)} transition-colors`}
+                    title={`${dateStr}: ${total} 分钟`}
                   />
                 )
               })}
@@ -84,12 +80,12 @@ export function Heatmap({ records, months }: HeatmapProps) {
         </div>
       </div>
 
-      <div className="flex items-center gap-2 mt-4 text-xs text-muted-foreground">
+      <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
         <span>少</span>
         <div className="flex gap-1">
           {["bg-muted", "bg-emerald-200", "bg-emerald-300", "bg-emerald-400", "bg-emerald-500", "bg-emerald-600"].map(
             (color) => (
-              <div key={color} className={`w-3 h-3 rounded-sm ${color}`} />
+              <div key={color} className={`h-3 w-3 rounded-sm ${color}`} />
             )
           )}
         </div>

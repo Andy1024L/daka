@@ -15,6 +15,9 @@ node_modules
 .next/
 .DS_Store
 .vercel
+*.log
+*.xlsx
+tsconfig.tsbuildinfo
 
 # pnpm
 pnpm-lock.yaml
