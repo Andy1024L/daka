@@ -18,6 +18,7 @@ node_modules
 *.log
 *.xlsx
 tsconfig.tsbuildinfo
+与gemini对话.md
 
 # pnpm
 pnpm-lock.yaml
