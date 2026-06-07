@@ -2,13 +2,14 @@ import type { CheckInRecord } from "@/types"
 
 const STORAGE_KEY = "check-in-records"
 const LEGACY_CACHE_KEY = "check-in-records-cache"
+const PENDING_SYNC_KEY = "check-in-records-pending-sync"
 
-let xlsxModule: typeof import("xlsx") | null = null
+let xlsxModule: typeof import("@e965/xlsx") | null = null
 let memoryCache: CheckInRecord[] | null = null
 
 async function getXLSX() {
   if (!xlsxModule) {
-    xlsxModule = await import("xlsx")
+    xlsxModule = await import("@e965/xlsx")
   }
   return xlsxModule
 }
@@ -121,8 +122,30 @@ function persistRecords(records: CheckInRecord[]): boolean {
   return saved
 }
 
-function formatDate(date: Date): string {
-  return date.toISOString().split("T")[0]
+export function formatLocalDate(date: Date): string {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-")
+}
+
+function parseLocalDate(value: string): Date {
+  const [year, month, day] = value.split("-").map((part) => Number(part))
+  return new Date(year, (month || 1) - 1, day || 1)
+}
+
+export function mergeRecordLists(...recordLists: CheckInRecord[][]): CheckInRecord[] {
+  const recordsById = new Map<string, CheckInRecord>()
+
+  for (const records of recordLists) {
+    for (const record of records) {
+      const normalized = normalizeRecord(record)
+      if (normalized) recordsById.set(normalized.id, normalized)
+    }
+  }
+
+  return [...recordsById.values()].sort((a, b) => b.timestamp - a.timestamp)
 }
 
 function formatTime(timestamp: number): string {
@@ -146,7 +169,8 @@ function parseDate(value: unknown): string | null {
   const parts = normalized.split("-").map((part) => Number(part))
   if (parts.length !== 3 || parts.some(Number.isNaN)) return null
 
-  let [year, month, day] = parts
+  let [year] = parts
+  const [, month, day] = parts
   if (year < 100) year = year > 50 ? 1900 + year : 2000 + year
 
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
@@ -156,7 +180,7 @@ function parseTimestamp(date: string, time: unknown): number {
   const [hours = 0, minutes = 0, seconds = 0] = String(time ?? "00:00:00")
     .split(":")
     .map((part) => Number(part))
-  const value = new Date(date)
+  const value = parseLocalDate(date)
 
   if (Number.isNaN(value.getTime())) return Date.now()
 
@@ -187,12 +211,49 @@ export function saveRecords(records: CheckInRecord[]): boolean {
   return persistRecords(records)
 }
 
+export function getPendingSyncRecords(): CheckInRecord[] {
+  const rawData = getItem(PENDING_SYNC_KEY)
+  if (!rawData) return []
+
+  try {
+    const parsed = JSON.parse(rawData)
+    if (!Array.isArray(parsed)) return []
+
+    return parsed
+      .map(normalizeRecord)
+      .filter((record): record is CheckInRecord => Boolean(record))
+  } catch {
+    return []
+  }
+}
+
+export function savePendingSyncRecords(records: CheckInRecord[]): boolean {
+  const cleanRecords = mergeRecordLists(records)
+
+  if (cleanRecords.length === 0) {
+    return removeItem(PENDING_SYNC_KEY)
+  }
+
+  return setItem(PENDING_SYNC_KEY, JSON.stringify(cleanRecords))
+}
+
+export function queuePendingSyncRecord(record: CheckInRecord): void {
+  savePendingSyncRecords(mergeRecordLists(getPendingSyncRecords(), [record]))
+}
+
+export function removePendingSyncRecords(ids: string[]): void {
+  if (ids.length === 0) return
+
+  const idsToRemove = new Set(ids)
+  savePendingSyncRecords(getPendingSyncRecords().filter((record) => !idsToRemove.has(record.id)))
+}
+
 export function addRecord(category: CheckInRecord["category"], duration: number): CheckInRecord | null {
   if (duration <= 0) return null
 
   const records = getRecords()
   const now = new Date()
-  const date = formatDate(now)
+  const date = formatLocalDate(now)
   const record: CheckInRecord = {
     id: generateId(records, date),
     timestamp: now.getTime(),
@@ -259,7 +320,7 @@ export async function downloadXLSX(records = getRecords()): Promise<void> {
   const link = document.createElement("a")
 
   link.href = url
-  link.download = `打卡记录_${formatDate(new Date())}.xlsx`
+  link.download = `打卡记录_${formatLocalDate(new Date())}.xlsx`
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
@@ -321,11 +382,11 @@ export function getMonthlyStats(
   category?: CheckInRecord["category"]
 ): StatsData {
   const filtered = records.filter((record) => {
-    const date = new Date(record.date)
+    const date = parseLocalDate(record.date)
     return date.getFullYear() === year && date.getMonth() === month && (!category || record.category === category)
   })
   const yearlyRecords = records.filter((record) => {
-    const date = new Date(record.date)
+    const date = parseLocalDate(record.date)
     return date.getFullYear() === year && (!category || record.category === category)
   })
   const workoutMinutes = filtered
@@ -374,7 +435,7 @@ export function getYearlyMonthlyStats(
   const monthlyData = new Array(12).fill(0)
 
   for (const record of records) {
-    const date = new Date(record.date)
+    const date = parseLocalDate(record.date)
     if (date.getFullYear() !== year) continue
     if (category && record.category !== category) continue
 

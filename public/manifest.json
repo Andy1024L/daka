@@ -2,6 +2,8 @@
   "name": "每日打卡",
   "short_name": "打卡",
   "description": "记录锻炼和拉伸的个人打卡工具",
+  "id": "/",
+  "scope": "/",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

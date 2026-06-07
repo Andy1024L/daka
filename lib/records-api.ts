@@ -1,5 +1,13 @@
 import type { AppConfig, CheckInRecord } from "@/types"
-import { getRecords, saveRecords } from "@/lib/storage"
+import {
+  formatLocalDate,
+  getPendingSyncRecords,
+  getRecords,
+  mergeRecordLists,
+  queuePendingSyncRecord,
+  removePendingSyncRecords,
+  saveRecords,
+} from "@/lib/storage"
 
 function mergeRecords(records: CheckInRecord[], nextRecord: CheckInRecord): CheckInRecord[] {
   const nextRecords = records.filter((record) => record.id !== nextRecord.id)
@@ -27,15 +35,34 @@ export async function getAppConfig(): Promise<AppConfig> {
   return requestJson<AppConfig>("/api/config")
 }
 
+export async function syncPendingRecords(): Promise<CheckInRecord[]> {
+  const pendingRecords = getPendingSyncRecords()
+  if (pendingRecords.length === 0) return []
+
+  const data = await requestJson<{ records: CheckInRecord[] }>("/api/records", {
+    method: "POST",
+    body: JSON.stringify({ records: pendingRecords }),
+  })
+
+  const savedRecords = data.records.length > 0 ? data.records : pendingRecords
+  removePendingSyncRecords(savedRecords.map((record) => record.id))
+  saveRecords(mergeRecordLists(getRecords(), savedRecords))
+
+  return savedRecords
+}
+
 export async function loadCloudRecords(): Promise<CheckInRecord[]> {
+  await syncPendingRecords().catch(() => undefined)
+
   const data = await requestJson<{ records: CheckInRecord[] }>("/api/records")
-  saveRecords(data.records)
-  return data.records
+  const records = mergeRecordLists(data.records, getPendingSyncRecords())
+  saveRecords(records)
+  return records
 }
 
 export function createOptimisticRecord(category: CheckInRecord["category"], duration: number): CheckInRecord {
   const now = new Date()
-  const date = now.toISOString().split("T")[0]
+  const date = formatLocalDate(now)
 
   return {
     id: `${date.replace(/-/g, "")}-${crypto.randomUUID()}`,
@@ -52,9 +79,13 @@ export async function saveCloudRecord(record: CheckInRecord): Promise<CheckInRec
   const data = await requestJson<{ records: CheckInRecord[] }>("/api/records", {
     method: "POST",
     body: JSON.stringify(record),
+  }).catch((error) => {
+    queuePendingSyncRecord(record)
+    throw error
   })
 
   const savedRecord = data.records[0] ?? record
+  removePendingSyncRecords([savedRecord.id])
   saveRecords(mergeRecords(getRecords(), savedRecord))
   return savedRecord
 }

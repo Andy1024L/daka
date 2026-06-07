@@ -223,7 +223,13 @@ export default function DataPage() {
                     <div
                       className={`
                         flex h-10 w-10 items-center justify-center rounded-xl text-lg font-bold
-                        ${record.category === "锻炼" ? "bg-orange-100 text-orange-600" : "bg-teal-100 text-teal-600"}
+                        ${
+                          record.category === "锻炼"
+                            ? "bg-orange-100 text-orange-600"
+                            : record.duration >= 2
+                              ? "bg-[#009360] text-white"
+                              : "bg-teal-100 text-teal-700"
+                        }
                       `}
                     >
                       {record.category === "锻炼" ? record.duration : `x${record.duration}`}

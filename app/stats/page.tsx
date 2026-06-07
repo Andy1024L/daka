@@ -25,6 +25,15 @@ function formatCompactNumber(value: number) {
   return value >= 10 ? String(Math.round(value)) : String(Math.round(value * 10) / 10)
 }
 
+function parseRecordDate(value: string) {
+  const [recordYear, recordMonth, recordDay] = value.split("-").map((part) => Number(part))
+  return {
+    year: recordYear,
+    month: (recordMonth || 1) - 1,
+    day: recordDay || 1,
+  }
+}
+
 export default function StatsPage() {
   const [records, setRecords] = useState<CheckInRecord[]>(() => getRecords())
   const [activeTab, setActiveTab] = useState<TabType>("锻炼")
@@ -63,11 +72,11 @@ export default function StatsPage() {
           : getDaysInYear(year)
 
     const periodRecords = records.filter((record) => {
-      const date = new Date(record.date)
-      if (date.getFullYear() !== year) return false
-      return viewMode === "year" || date.getMonth() === month
+      const date = parseRecordDate(record.date)
+      if (date.year !== year) return false
+      return viewMode === "year" || date.month === month
     })
-    const yearRecords = records.filter((record) => new Date(record.date).getFullYear() === year)
+    const yearRecords = records.filter((record) => parseRecordDate(record.date).year === year)
     const filteredRecords = activeTab === "全部" ? periodRecords : periodRecords.filter((record) => record.category === activeTab)
     const yearFilteredRecords = activeTab === "全部" ? yearRecords : yearRecords.filter((record) => record.category === activeTab)
     const workoutMinutes = filteredRecords
@@ -83,7 +92,6 @@ export default function StatsPage() {
     const yearWorkoutDays = getUniqueDays(yearRecords.filter((record) => record.category === "锻炼"))
     const yearStretchRecords = yearRecords.filter((record) => record.category === "拉伸")
     const yearStretchDays = getUniqueDays(yearStretchRecords)
-    const yearStretchCount = yearStretchRecords.reduce((sum, record) => sum + record.duration, 0)
     const yearElapsedDays = isCurrentYear
       ? Math.ceil((today.getTime() - new Date(year, 0, 1).getTime()) / 86400000) + 1
       : getDaysInYear(year)
@@ -96,12 +104,12 @@ export default function StatsPage() {
       stretchCount,
       avgMinutesPerDay: totalDays > 0 ? Math.round(workoutMinutes / totalDays) : 0,
       weeklyDays: totalDays / Math.max(periodDays / 7, 1),
-      stretchFrequency: stretchCount > 0 ? Math.round(periodDays / stretchCount) : 0,
+      stretchFrequency: stretchDays > 0 ? Math.round(periodDays / stretchDays) : 0,
       yearTotalDays,
       yearWorkoutDays,
       yearWorkoutWeeklyDays: yearWorkoutDays / Math.max(yearElapsedDays / 7, 1),
       yearStretchDays,
-      yearStretchFrequency: yearStretchCount > 0 ? Math.round(yearElapsedDays / yearStretchCount) : 0,
+      yearStretchFrequency: yearStretchDays > 0 ? Math.round(yearElapsedDays / yearStretchDays) : 0,
     }
   }, [records, year, month, viewMode, activeTab])
 
@@ -209,8 +217,8 @@ export default function StatsPage() {
   }
 
   const getStretchHeatClass = (count = 0) => {
-    if (count >= 2) return "bg-teal-400 text-white"
-    if (count >= 1) return "bg-teal-200 text-teal-900"
+    if (count >= 2) return "bg-[#009360] text-white"
+    if (count >= 1) return "bg-teal-100 text-teal-900"
     return ""
   }
 
@@ -393,7 +401,13 @@ export default function StatsPage() {
                           {isAllView && (hasWorkout || hasStretch) && (
                             <span className="mt-0.5 flex h-2 items-center gap-1">
                               {hasWorkout && <span className="h-2 w-2 rounded-full bg-orange-500" />}
-                              {hasStretch && <span className="h-2 w-2 rounded-full bg-teal-500" />}
+                              {hasStretch && (
+                                <span
+                                  className={`h-2 w-2 rounded-full ${
+                                    (dayData?.stretch ?? 0) >= 2 ? "bg-[#009360]" : "bg-teal-400"
+                                  }`}
+                                />
+                              )}
                             </span>
                           )}
                           {!isAllView && dayValue && (
