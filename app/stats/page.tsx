@@ -375,20 +375,27 @@ export default function StatsPage() {
                           <span
                             className={`
                               relative flex h-9 w-9 items-center justify-center rounded-xl font-semibold
-                              ${recordInfo && !isAllView ? heatClass : "text-foreground"}
-                              ${todayCell ? "ring-2 ring-foreground/40 ring-offset-2 ring-offset-background" : ""}
-                              ${!recordInfo ? "border border-dashed border-muted-foreground/25 text-muted-foreground" : ""}
-                              ${recordInfo && isAllView ? "bg-muted/60" : ""}
+                              ${
+                                isAllView
+                                  ? todayCell
+                                    ? "border-2 border-foreground/45 text-foreground"
+                                    : "border border-dashed border-muted-foreground/25 text-foreground"
+                                  : recordInfo
+                                    ? heatClass
+                                    : todayCell
+                                      ? "border-2 border-foreground/45 text-foreground"
+                                      : "border border-dashed border-muted-foreground/25 text-muted-foreground"
+                              }
                             `}
                           >
                             {day}
-                            {isAllView && (hasWorkout || hasStretch) && (
-                              <span className="absolute bottom-1 flex items-center gap-1">
-                                {hasWorkout && <span className="h-2 w-2 rounded-full bg-orange-500" />}
-                                {hasStretch && <span className="h-2 w-2 rounded-full bg-teal-500" />}
-                              </span>
-                            )}
                           </span>
+                          {isAllView && (hasWorkout || hasStretch) && (
+                            <span className="mt-0.5 flex h-2 items-center gap-1">
+                              {hasWorkout && <span className="h-2 w-2 rounded-full bg-orange-500" />}
+                              {hasStretch && <span className="h-2 w-2 rounded-full bg-teal-500" />}
+                            </span>
+                          )}
                           {!isAllView && dayValue && (
                             <span className="mt-1 h-3 text-[9px] font-semibold leading-none opacity-60">{dayValue}</span>
                           )}
