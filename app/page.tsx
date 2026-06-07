@@ -31,7 +31,7 @@ export default function HomePage() {
   )
 
   const handleStretchCheckIn = useCallback(
-    (count: 1 | 2) => {
+    (count: 1) => {
       const record = createOptimisticRecord("拉伸", count)
 
       setAnimatingButton(`stretch-${count}`)
@@ -47,16 +47,22 @@ export default function HomePage() {
 
   const WorkoutButton = ({ duration, isPrimary = false }: { duration: number; isPrimary?: boolean }) => {
     const isAnimating = animatingButton === `workout-${duration}`
+    const colorClass =
+      duration >= 120
+        ? "bg-gradient-to-br from-red-500 to-rose-600"
+        : duration >= 90
+          ? "bg-gradient-to-br from-orange-500 to-rose-500"
+          : duration >= 60
+            ? "bg-gradient-to-br from-orange-400 to-orange-500"
+            : "bg-gradient-to-br from-orange-300 to-orange-400"
 
     return (
       <button
         onClick={() => handleWorkoutCheckIn(duration)}
         className={`
           relative overflow-hidden rounded-2xl
-          ${isPrimary
-            ? "bg-gradient-to-br from-orange-500 to-rose-500 col-span-3 h-28"
-            : "bg-gradient-to-br from-orange-400 to-orange-500 h-20"
-          }
+          ${colorClass}
+          ${isPrimary ? "col-span-3 h-28" : "h-20"}
           flex flex-col items-center justify-center text-white font-semibold shadow-lg
           transition-all duration-200 ease-out hover:scale-[1.02] hover:shadow-xl active:scale-95
           ${isAnimating ? "ring-4 ring-white/50" : ""}
@@ -73,7 +79,7 @@ export default function HomePage() {
     )
   }
 
-  const StretchButton = ({ count }: { count: 1 | 2 }) => {
+  const StretchButton = ({ count }: { count: 1 }) => {
     const isAnimating = animatingButton === `stretch-${count}`
 
     return (
@@ -130,21 +136,14 @@ export default function HomePage() {
             <h2 className="text-lg font-bold text-foreground">拉伸</h2>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3">
             <StretchButton count={1} />
-            <StretchButton count={2} />
           </div>
         </section>
       </div>
 
       <SuccessToast message={toast.message} isVisible={toast.visible} />
       <BottomNav />
-
-      <div className="mx-auto max-w-md px-4 pb-24">
-        <div className="flex items-center justify-center py-4">
-          <span className="text-xs text-muted-foreground/50">v1.2.1</span>
-        </div>
-      </div>
     </main>
   )
 }

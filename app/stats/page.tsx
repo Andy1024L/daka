@@ -3,22 +3,33 @@
 import { useEffect, useMemo, useState } from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { BottomNav } from "@/components/bottom-nav"
-import { getDailyStats, getMonthlyStats, getRecords } from "@/lib/storage"
+import { getDailyStats, getRecords } from "@/lib/storage"
 import { loadCloudRecords } from "@/lib/records-api"
 import type { CheckInRecord } from "@/types"
 
 type TabType = "全部" | "锻炼" | "拉伸"
 
-const tabs: TabType[] = ["全部", "锻炼", "拉伸"]
+const tabs: TabType[] = ["锻炼", "拉伸", "全部"]
 const weekDays = ["一", "二", "三", "四", "五", "六", "日"]
 
+function getUniqueDays(records: CheckInRecord[]) {
+  return new Set(records.map((record) => record.date)).size
+}
+
+function getDaysInYear(year: number) {
+  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 366 : 365
+}
+
+function formatCompactNumber(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "-"
+  return value >= 10 ? String(Math.round(value)) : String(Math.round(value * 10) / 10)
+}
+
 export default function StatsPage() {
-  const [records, setRecords] = useState<CheckInRecord[]>([])
-  const [activeTab, setActiveTab] = useState<TabType>("全部")
+  const [records, setRecords] = useState<CheckInRecord[]>(() => getRecords())
+  const [activeTab, setActiveTab] = useState<TabType>("锻炼")
   const [viewMode, setViewMode] = useState<"month" | "year">("month")
   const [currentDate, setCurrentDate] = useState(new Date())
-  const [isLoading, setIsLoading] = useState(true)
-
   useEffect(() => {
     let isMounted = true
 
@@ -27,10 +38,7 @@ export default function StatsPage() {
         if (isMounted) setRecords(data)
       })
       .catch(() => {
-        if (isMounted) setRecords(getRecords())
-      })
-      .finally(() => {
-        if (isMounted) setIsLoading(false)
+        if (isMounted) setRecords((current) => (current.length > 0 ? current : getRecords()))
       })
 
     return () => {
@@ -40,9 +48,62 @@ export default function StatsPage() {
 
   const year = currentDate.getFullYear()
   const month = currentDate.getMonth()
-  const category = activeTab === "全部" ? undefined : activeTab
-  const stats = useMemo(() => getMonthlyStats(records, year, month, category), [records, year, month, category])
   const dailyStats = useMemo(() => getDailyStats(records), [records])
+  const periodInfo = useMemo(() => {
+    const today = new Date()
+    const isCurrentYear = year === today.getFullYear()
+    const isCurrentMonth = isCurrentYear && month === today.getMonth()
+    const periodDays =
+      viewMode === "month"
+        ? isCurrentMonth
+          ? today.getDate()
+          : new Date(year, month + 1, 0).getDate()
+        : isCurrentYear
+          ? Math.ceil((today.getTime() - new Date(year, 0, 1).getTime()) / 86400000) + 1
+          : getDaysInYear(year)
+
+    const periodRecords = records.filter((record) => {
+      const date = new Date(record.date)
+      if (date.getFullYear() !== year) return false
+      return viewMode === "year" || date.getMonth() === month
+    })
+    const yearRecords = records.filter((record) => new Date(record.date).getFullYear() === year)
+    const filteredRecords = activeTab === "全部" ? periodRecords : periodRecords.filter((record) => record.category === activeTab)
+    const yearFilteredRecords = activeTab === "全部" ? yearRecords : yearRecords.filter((record) => record.category === activeTab)
+    const workoutMinutes = filteredRecords
+      .filter((record) => record.category === "锻炼")
+      .reduce((sum, record) => sum + record.duration, 0)
+    const stretchCount = filteredRecords
+      .filter((record) => record.category === "拉伸")
+      .reduce((sum, record) => sum + record.duration, 0)
+    const workoutDays = getUniqueDays(filteredRecords.filter((record) => record.category === "锻炼"))
+    const stretchDays = getUniqueDays(filteredRecords.filter((record) => record.category === "拉伸"))
+    const totalDays = getUniqueDays(filteredRecords)
+    const yearTotalDays = getUniqueDays(yearFilteredRecords)
+    const yearWorkoutDays = getUniqueDays(yearRecords.filter((record) => record.category === "锻炼"))
+    const yearStretchRecords = yearRecords.filter((record) => record.category === "拉伸")
+    const yearStretchDays = getUniqueDays(yearStretchRecords)
+    const yearStretchCount = yearStretchRecords.reduce((sum, record) => sum + record.duration, 0)
+    const yearElapsedDays = isCurrentYear
+      ? Math.ceil((today.getTime() - new Date(year, 0, 1).getTime()) / 86400000) + 1
+      : getDaysInYear(year)
+
+    return {
+      totalDays,
+      workoutDays,
+      stretchDays,
+      workoutMinutes,
+      stretchCount,
+      avgMinutesPerDay: totalDays > 0 ? Math.round(workoutMinutes / totalDays) : 0,
+      weeklyDays: totalDays / Math.max(periodDays / 7, 1),
+      stretchFrequency: stretchCount > 0 ? Math.round(periodDays / stretchCount) : 0,
+      yearTotalDays,
+      yearWorkoutDays,
+      yearWorkoutWeeklyDays: yearWorkoutDays / Math.max(yearElapsedDays / 7, 1),
+      yearStretchDays,
+      yearStretchFrequency: yearStretchCount > 0 ? Math.round(yearElapsedDays / yearStretchCount) : 0,
+    }
+  }, [records, year, month, viewMode, activeTab])
 
   const monthCalendar = useMemo(() => {
     const firstDay = new Date(year, month, 1)
@@ -69,32 +130,29 @@ export default function StatsPage() {
         const hasRecord =
           activeTab === "全部" ? hasWorkout || hasStretch : activeTab === "锻炼" ? hasWorkout : hasStretch
 
-        return { day, hasRecord }
+        return { day, dayData, hasRecord }
       })
 
       return { month: monthIndex, days }
     })
   }, [year, dailyStats, activeTab])
 
-  const stretchFrequency = useMemo(() => {
-    const today = new Date()
-    const isCurrentMonth = year === today.getFullYear() && month === today.getMonth()
-    const monthDays = isCurrentMonth ? today.getDate() : new Date(year, month + 1, 0).getDate()
-    const yearDays =
-      year === today.getFullYear()
-        ? Math.ceil((today.getTime() - new Date(year, 0, 1).getTime()) / 86400000) + 1
-        : year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
-          ? 366
-          : 365
-    const yearStretchCount = records
-      .filter((record) => new Date(record.date).getFullYear() === year && record.category === "拉伸")
-      .reduce((sum, record) => sum + record.duration, 0)
-
-    return {
-      monthFreq: stats.stretchCount > 0 ? Math.round(monthDays / stats.stretchCount) : 0,
-      yearFreq: yearStretchCount > 0 ? Math.round(yearDays / yearStretchCount) : 0,
-    }
-  }, [records, year, month, stats.stretchCount])
+  const summaryContent =
+    activeTab === "锻炼" ? (
+      <>
+        年度累计 <strong className="font-bold text-orange-600">{periodInfo.yearWorkoutDays}</strong> 天，平均{" "}
+        <strong className="font-bold text-orange-600">{formatCompactNumber(periodInfo.yearWorkoutWeeklyDays)}</strong> 天/周
+      </>
+    ) : activeTab === "拉伸" ? (
+      <>
+        年度累计 <strong className="font-bold text-teal-600">{periodInfo.yearStretchDays}</strong> 天，平均{" "}
+        <strong className="font-bold text-teal-600">{periodInfo.yearStretchFrequency || "-"}</strong> 天/次
+      </>
+    ) : (
+      <>
+        年度累计 <strong className="font-bold text-slate-800">{periodInfo.yearTotalDays}</strong> 天
+      </>
+    )
 
   const navigate = (direction: -1 | 1) => {
     const nextDate = new Date(currentDate)
@@ -129,10 +187,46 @@ export default function StatsPage() {
     return "text-foreground border-foreground bg-muted"
   }
 
-  const getAccentColor = () => {
-    if (activeTab === "锻炼") return "bg-orange-200 text-orange-700"
-    if (activeTab === "拉伸") return "bg-teal-200 text-teal-700"
-    return "bg-rose-200 text-rose-700"
+  const getMetricCardClass = () => {
+    if (activeTab === "锻炼") return "bg-orange-50 text-orange-700"
+    if (activeTab === "拉伸") return "bg-teal-50 text-teal-700"
+    return "bg-slate-100 text-slate-800"
+  }
+
+  const getMetricLabelClass = () => {
+    if (activeTab === "锻炼") return "text-orange-600/70"
+    if (activeTab === "拉伸") return "text-teal-600/70"
+    return "text-slate-500"
+  }
+
+  const getWorkoutHeatClass = (minutes = 0) => {
+    if (minutes >= 120) return "bg-red-500 text-white"
+    if (minutes >= 90) return "bg-orange-400 text-white"
+    if (minutes >= 60) return "bg-orange-300 text-orange-950"
+    if (minutes >= 30) return "bg-orange-200 text-orange-900"
+    if (minutes > 0) return "bg-orange-100 text-orange-800"
+    return ""
+  }
+
+  const getStretchHeatClass = (count = 0) => {
+    if (count >= 2) return "bg-teal-400 text-white"
+    if (count >= 1) return "bg-teal-200 text-teal-900"
+    return ""
+  }
+
+  const getDayHeatClass = (dayData?: { workout: number; stretch: number } | null) => {
+    if (!dayData) return ""
+    if (activeTab === "锻炼") return getWorkoutHeatClass(dayData.workout)
+    if (activeTab === "拉伸") return getStretchHeatClass(dayData.stretch)
+    if (dayData.workout > 0) return getWorkoutHeatClass(dayData.workout)
+    return getStretchHeatClass(dayData.stretch)
+  }
+
+  const getDayValue = (dayData?: { workout: number; stretch: number } | null) => {
+    if (!dayData) return ""
+    if (activeTab === "锻炼") return dayData.workout ? String(dayData.workout) : ""
+    if (activeTab === "拉伸") return dayData.stretch ? `x${dayData.stretch}` : ""
+    return ""
   }
 
   return (
@@ -144,10 +238,7 @@ export default function StatsPage() {
       </header>
 
       <div className="mx-auto max-w-md space-y-4 px-4 py-4">
-        {isLoading ? (
-          <div className="py-12 text-center text-sm text-muted-foreground">加载中...</div>
-        ) : (
-          <>
+        <>
             <div className="flex gap-2 rounded-xl bg-muted/50 p-1">
               {tabs.map((tab) => (
                 <button
@@ -166,43 +257,55 @@ export default function StatsPage() {
             <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
               <div className="mb-3 flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">
-                  {year}年{month + 1}月
+                  {viewMode === "month" ? `${year}年${month + 1}月` : `${year}年`}
                 </span>
-                <span className="text-xs text-muted-foreground">年度累计 {stats.yearTotalDays} 天</span>
+                <span className="text-xs text-muted-foreground">{summaryContent}</span>
               </div>
 
-              <div className="grid grid-cols-4 gap-2">
-                <div className="rounded-xl bg-muted/50 p-2 text-center">
-                  <div className="text-2xl font-bold text-foreground">{stats.totalDays}</div>
-                  <div className="text-[10px] text-muted-foreground">打卡天数</div>
+              <div className={`grid gap-2 ${activeTab === "锻炼" ? "grid-cols-4" : activeTab === "拉伸" ? "grid-cols-2" : "grid-cols-3"}`}>
+                <div className={`rounded-xl p-2 text-center ${getMetricCardClass()}`}>
+                  <div className="text-2xl font-bold">
+                    {activeTab === "锻炼"
+                      ? periodInfo.workoutDays
+                      : activeTab === "拉伸"
+                        ? periodInfo.stretchDays
+                        : periodInfo.totalDays}
+                  </div>
+                  <div className={`text-[10px] ${getMetricLabelClass()}`}>
+                    {activeTab === "锻炼" ? "锻炼天数" : activeTab === "拉伸" ? "拉伸天数" : "打卡天数"}
+                  </div>
                 </div>
-                {activeTab !== "拉伸" && (
+                {activeTab === "全部" ? (
                   <>
-                    <div className="rounded-xl bg-orange-50 p-2 text-center">
-                      <div className="text-2xl font-bold text-orange-600">{stats.workoutMinutes}</div>
-                      <div className="text-[10px] text-orange-600/70">分钟</div>
+                    <div className={`rounded-xl p-2 text-center ${getMetricCardClass()}`}>
+                      <div className="text-2xl font-bold">{periodInfo.workoutDays}</div>
+                      <div className={`text-[10px] ${getMetricLabelClass()}`}>锻炼天数</div>
                     </div>
-                    <div className="rounded-xl bg-muted/50 p-2 text-center">
-                      <div className="text-2xl font-bold text-foreground">{stats.avgMinutesPerDay}</div>
-                      <div className="text-[10px] text-muted-foreground">日均</div>
+                    <div className={`rounded-xl p-2 text-center ${getMetricCardClass()}`}>
+                      <div className="text-2xl font-bold">{periodInfo.stretchDays}</div>
+                      <div className={`text-[10px] ${getMetricLabelClass()}`}>拉伸天数</div>
                     </div>
                   </>
-                )}
-                {activeTab !== "锻炼" && (
-                  <div className="rounded-xl bg-teal-50 p-2 text-center">
-                    <div className="text-2xl font-bold text-teal-600">{stats.stretchCount}</div>
-                    <div className="text-[10px] text-teal-600/70">拉伸次数</div>
-                  </div>
-                )}
-                {activeTab === "拉伸" && (
+                ) : activeTab === "锻炼" ? (
                   <>
-                    <div className="rounded-xl bg-teal-50/50 p-2 text-center">
-                      <div className="text-2xl font-bold text-teal-600">{stretchFrequency.monthFreq || "-"}</div>
-                      <div className="text-[10px] text-teal-600/70">天/次</div>
+                    <div className={`rounded-xl p-2 text-center ${getMetricCardClass()}`}>
+                      <div className="text-2xl font-bold">{periodInfo.workoutMinutes}</div>
+                      <div className={`text-[10px] ${getMetricLabelClass()}`}>分钟</div>
                     </div>
-                    <div className="rounded-xl bg-teal-50/50 p-2 text-center">
-                      <div className="text-2xl font-bold text-teal-600">{stretchFrequency.yearFreq || "-"}</div>
-                      <div className="text-[10px] text-teal-600/70">年均</div>
+                    <div className={`rounded-xl p-2 text-center ${getMetricCardClass()}`}>
+                      <div className="text-2xl font-bold">{periodInfo.avgMinutesPerDay}</div>
+                      <div className={`text-[10px] ${getMetricLabelClass()}`}>日均</div>
+                    </div>
+                    <div className={`rounded-xl p-2 text-center ${getMetricCardClass()}`}>
+                      <div className="text-2xl font-bold">{formatCompactNumber(periodInfo.weeklyDays)}</div>
+                      <div className={`text-[10px] ${getMetricLabelClass()}`}>周均天数</div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className={`rounded-xl p-2 text-center ${getMetricCardClass()}`}>
+                      <div className="text-2xl font-bold">{periodInfo.stretchFrequency || "-"}</div>
+                      <div className={`text-[10px] ${getMetricLabelClass()}`}>天/次</div>
                     </div>
                   </>
                 )}
@@ -250,7 +353,7 @@ export default function StatsPage() {
 
                   <div className="grid grid-cols-7 gap-1">
                     {monthCalendar.map((day, index) => {
-                      if (day === null) return <div key={`empty-${index}`} className="aspect-square" />
+                      if (day === null) return <div key={`empty-${index}`} className="h-14" />
 
                       const recordInfo = getDayRecordInfo(day)
                       const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
@@ -258,25 +361,37 @@ export default function StatsPage() {
                       const hasWorkout = Boolean(dayData?.workout)
                       const hasStretch = Boolean(dayData?.stretch)
                       const todayCell = isToday(day)
+                      const heatClass = getDayHeatClass(dayData)
+                      const dayValue = getDayValue(dayData)
+                      const isAllView = activeTab === "全部"
 
                       return (
                         <div
                           key={day}
                           className={`
-                            relative flex aspect-square flex-col items-center justify-center rounded-full text-xs transition-all duration-200
-                            ${recordInfo ? getAccentColor() : "text-foreground"}
-                            ${todayCell && !recordInfo ? "ring-2 ring-foreground/30 ring-inset" : ""}
-                            ${!recordInfo && !todayCell ? "border border-dashed border-muted-foreground/20" : ""}
+                            relative flex h-14 flex-col items-center justify-start text-xs transition-all duration-200
                           `}
                         >
-                          <span className="font-medium">{day}</span>
-                          {activeTab === "全部" && (hasWorkout || hasStretch) && (
-                            <div className="absolute -bottom-1 flex gap-0.5">
-                              {hasWorkout && <span className="h-1.5 w-1.5 rounded-full bg-orange-500" />}
-                              {hasStretch && <span className="h-1.5 w-1.5 rounded-full bg-teal-500" />}
-                            </div>
+                          <span
+                            className={`
+                              relative flex h-9 w-9 items-center justify-center rounded-xl font-semibold
+                              ${recordInfo && !isAllView ? heatClass : "text-foreground"}
+                              ${todayCell ? "ring-2 ring-foreground/40 ring-offset-2 ring-offset-background" : ""}
+                              ${!recordInfo ? "border border-dashed border-muted-foreground/25 text-muted-foreground" : ""}
+                              ${recordInfo && isAllView ? "bg-muted/60" : ""}
+                            `}
+                          >
+                            {day}
+                            {isAllView && (hasWorkout || hasStretch) && (
+                              <span className="absolute bottom-1 flex items-center gap-1">
+                                {hasWorkout && <span className="h-2 w-2 rounded-full bg-orange-500" />}
+                                {hasStretch && <span className="h-2 w-2 rounded-full bg-teal-500" />}
+                              </span>
+                            )}
+                          </span>
+                          {!isAllView && dayValue && (
+                            <span className="mt-1 h-3 text-[9px] font-semibold leading-none opacity-60">{dayValue}</span>
                           )}
-                          {todayCell && <span className="absolute -bottom-3.5 text-[8px] text-muted-foreground">今天</span>}
                         </div>
                       )
                     })}
@@ -288,19 +403,12 @@ export default function StatsPage() {
                     <div key={monthIndex} className="space-y-1">
                       <span className="text-xs font-medium text-muted-foreground">{monthIndex + 1}月</span>
                       <div className="grid grid-cols-7 gap-[2px]">
-                        {days.map(({ day, hasRecord }) => (
+                        {days.map(({ day, dayData, hasRecord }) => (
                           <div
                             key={day}
                             className={`
                               h-[6px] w-[6px] rounded-[1px] transition-colors
-                              ${hasRecord
-                                ? activeTab === "锻炼"
-                                  ? "bg-orange-400"
-                                  : activeTab === "拉伸"
-                                    ? "bg-teal-400"
-                                    : "bg-rose-300"
-                                : "bg-muted"
-                              }
+                              ${hasRecord ? getDayHeatClass(dayData) : "bg-muted"}
                             `}
                           />
                         ))}
@@ -310,8 +418,7 @@ export default function StatsPage() {
                 </div>
               )}
             </section>
-          </>
-        )}
+        </>
       </div>
 
       <BottomNav />

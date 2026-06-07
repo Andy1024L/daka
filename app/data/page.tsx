@@ -16,7 +16,7 @@ import {
 import type { CheckInRecord } from "@/types"
 
 export default function DataPage() {
-  const [records, setRecords] = useState<CheckInRecord[]>([])
+  const [records, setRecords] = useState<CheckInRecord[]>(() => getRecords())
   const [toast, setToast] = useState({ visible: false, message: "" })
   const [showConfirm, setShowConfirm] = useState(false)
   const [editingRecord, setEditingRecord] = useState<CheckInRecord | null>(null)
@@ -39,7 +39,7 @@ export default function DataPage() {
       setRecords(data)
       setError(null)
     } catch (err) {
-      setRecords(getRecords())
+      setRecords((current) => (current.length > 0 ? current : getRecords()))
       setError(err instanceof Error ? err.message : "云端数据加载失败")
     }
   }, [])
@@ -177,23 +177,28 @@ export default function DataPage() {
           </div>
 
           {!showConfirm ? (
-            <Button
-              onClick={() => setShowConfirm(true)}
-              variant="outline"
-              disabled={records.length === 0}
-              className="mt-2 h-11 w-full gap-2 border-destructive/30 text-sm text-destructive hover:bg-destructive/10 hover:text-destructive disabled:border-border disabled:text-muted-foreground"
-            >
-              <Trash2 className="h-4 w-4" />
-              清除所有数据
-            </Button>
+            <div className="mt-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowConfirm(true)}
+                disabled={records.length === 0}
+                className="inline-flex items-center gap-1.5 rounded-md px-1 py-1 text-xs text-muted-foreground transition-colors hover:text-destructive disabled:pointer-events-none disabled:opacity-40"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                清除所有数据
+              </button>
+            </div>
           ) : (
-            <div className="mt-2 flex gap-2">
-              <Button onClick={() => setShowConfirm(false)} variant="outline" className="h-11 flex-1 text-sm">
-                取消
-              </Button>
-              <Button onClick={handleClear} variant="destructive" className="h-11 flex-1 text-sm">
-                确认清除
-              </Button>
+            <div className="mt-3 rounded-xl border border-destructive/20 bg-destructive/5 p-3">
+              <p className="text-xs text-muted-foreground">会清空云端全部记录，导入备份前请确认。</p>
+              <div className="mt-3 flex justify-end gap-2">
+                <Button onClick={() => setShowConfirm(false)} variant="ghost" className="h-8 px-3 text-xs">
+                  取消
+                </Button>
+                <Button onClick={handleClear} variant="destructive" className="h-8 px-3 text-xs">
+                  确认清除
+                </Button>
+              </div>
             </div>
           )}
 
@@ -207,7 +212,7 @@ export default function DataPage() {
           </div>
 
           <div className="max-h-[50vh] divide-y divide-border overflow-y-auto">
-            {isLoading ? (
+            {isLoading && sortedRecords.length === 0 ? (
               <div className="py-12 text-center text-sm text-muted-foreground">加载中...</div>
             ) : sortedRecords.length === 0 ? (
               <div className="py-12 text-center text-sm text-muted-foreground">暂无记录</div>
