@@ -29,13 +29,39 @@ export function ServiceWorkerRegistration() {
         })
     }
 
-    if (document.readyState === "complete") {
-      register()
-      return
+    const scheduleRegister = () => {
+      const registerWhenIdle =
+        "requestIdleCallback" in window
+          ? window.requestIdleCallback
+          : (callback: IdleRequestCallback) => window.setTimeout(callback, 4000)
+
+      const idleId = registerWhenIdle(register, { timeout: 8000 })
+
+      return () => {
+        if ("cancelIdleCallback" in window && typeof idleId === "number") {
+          window.cancelIdleCallback(idleId)
+        } else if (typeof idleId === "number") {
+          window.clearTimeout(idleId)
+        }
+      }
     }
 
-    window.addEventListener("load", register, { once: true })
-    return () => window.removeEventListener("load", register)
+    let cancelScheduledRegister: (() => void) | undefined
+
+    const onLoad = () => {
+      cancelScheduledRegister = scheduleRegister()
+    }
+
+    if (document.readyState === "complete") {
+      cancelScheduledRegister = scheduleRegister()
+      return () => cancelScheduledRegister?.()
+    }
+
+    window.addEventListener("load", onLoad, { once: true })
+    return () => {
+      window.removeEventListener("load", onLoad)
+      cancelScheduledRegister?.()
+    }
   }, [])
 
   return null

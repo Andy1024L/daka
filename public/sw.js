@@ -1,9 +1,5 @@
-const CACHE_VERSION = "daka-shell-v20260607-stretch-v2"
+const CACHE_VERSION = "daka-shell-v20260609-nav-v1"
 const APP_SHELL_URLS = [
-  "/",
-  "/stats",
-  "/data",
-  "/login",
   "/manifest.json",
   "/icon-192.png",
   "/icon-512.png",
