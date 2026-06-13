@@ -23,7 +23,6 @@ export function ServiceWorkerRegistration() {
     const register = () => {
       navigator.serviceWorker
         .register("/sw.js")
-        .then((registration) => registration.update())
         .catch(() => {
           // The app still works without offline startup caching.
         })

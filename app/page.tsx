@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react"
 import { Check, Dumbbell, Sparkles } from "lucide-react"
+import { AppUpdateControl } from "@/components/app-update-control"
 import { BottomNav } from "@/components/bottom-nav"
 import { SuccessToast } from "@/components/success-toast"
 import { createOptimisticRecord, saveCloudRecord } from "@/lib/records-api"
@@ -140,6 +141,8 @@ export default function HomePage() {
             <StretchButton count={1} />
           </div>
         </section>
+
+        <AppUpdateControl />
       </div>
 
       <SuccessToast message={toast.message} isVisible={toast.visible} />

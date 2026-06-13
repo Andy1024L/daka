@@ -1,5 +1,9 @@
-const CACHE_VERSION = "daka-shell-v20260609-nav-v1"
+const CACHE_VERSION = "daka-shell-v20260613-manual-update-v1"
 const APP_SHELL_URLS = [
+  "/",
+  "/stats",
+  "/data",
+  "/login",
   "/manifest.json",
   "/icon-192.png",
   "/icon-512.png",
@@ -50,25 +54,18 @@ async function deleteOldCaches() {
   await Promise.all(cacheNames.filter((name) => name !== CACHE_VERSION).map((name) => caches.delete(name)))
 }
 
-async function refreshCache(request) {
-  try {
-    const response = await fetch(request)
-    if (response.ok) {
-      const cache = await caches.open(CACHE_VERSION)
-      await cache.put(request, response.clone())
-    }
-    return response
-  } catch {
-    return null
-  }
-}
-
 self.addEventListener("install", (event) => {
-  event.waitUntil(cacheAppShell().then(() => self.skipWaiting()))
+  event.waitUntil(cacheAppShell())
 })
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(deleteOldCaches().then(() => self.clients.claim()))
+})
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "ACTIVATE_UPDATE") {
+    self.skipWaiting()
+  }
 })
 
 self.addEventListener("fetch", (event) => {
@@ -83,23 +80,28 @@ self.addEventListener("fetch", (event) => {
     return
   }
 
+  if (url.pathname === "/version.json") {
+    event.respondWith(fetch(request))
+    return
+  }
+
   if (request.mode === "navigate") {
     event.respondWith(
       caches.match(request).then((cachedResponse) => {
-        const preloadOrRefresh = event.preloadResponse.then((response) => {
-          if (response) {
-            caches.open(CACHE_VERSION).then((cache) => cache.put(request, response.clone()))
-            return response
-          }
-          return refreshCache(request)
-        })
-
         if (cachedResponse) {
-          event.waitUntil(preloadOrRefresh)
           return cachedResponse
         }
 
-        return preloadOrRefresh.then((response) => response ?? caches.match("/"))
+        return fetch(request)
+          .then((response) => {
+            if (response.ok) {
+              const responseToCache = response.clone()
+              caches.open(CACHE_VERSION).then((cache) => cache.put(request, responseToCache))
+            }
+
+            return response
+          })
+          .catch(() => caches.match("/"))
       })
     )
     return
