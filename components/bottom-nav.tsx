@@ -1,8 +1,9 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { BarChart3, Database, Home } from "lucide-react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 
 const links = [
   { href: "/", icon: Home, label: "打卡" },
@@ -12,12 +13,41 @@ const links = [
 
 export function BottomNav() {
   const pathname = usePathname()
+  const router = useRouter()
+  const [pendingHref, setPendingHref] = useState<string | null>(null)
+
+  useEffect(() => {
+    const prefetchPages = () => {
+      router.prefetch("/stats")
+      router.prefetch("/data")
+    }
+
+    const schedulePrefetch =
+      "requestIdleCallback" in window
+        ? window.requestIdleCallback
+        : (callback: IdleRequestCallback) => window.setTimeout(callback, 1800)
+
+    const idleId = schedulePrefetch(prefetchPages, { timeout: 3500 })
+
+    return () => {
+      if ("cancelIdleCallback" in window && typeof idleId === "number") {
+        window.cancelIdleCallback(idleId)
+      } else if (typeof idleId === "number") {
+        window.clearTimeout(idleId)
+      }
+    }
+  }, [router])
+
+  useEffect(() => {
+    setPendingHref(null)
+  }, [pathname])
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-[calc(env(safe-area-inset-bottom)+12px)]">
       <div className="mx-auto flex max-w-sm rounded-full border border-border/70 bg-background/90 p-1.5 shadow-lg shadow-black/5 backdrop-blur-xl">
         {links.map(({ href, icon: Icon, label }) => {
-          const isActive = pathname === href || (href !== "/" && pathname?.startsWith(href))
+          const activePath = pendingHref ?? pathname
+          const isActive = activePath === href || (href !== "/" && activePath?.startsWith(href))
 
           return (
             <Link
@@ -25,6 +55,13 @@ export function BottomNav() {
               href={href}
               replace
               prefetch={false}
+              onTouchStart={() => {
+                if (href !== "/") router.prefetch(href)
+              }}
+              onMouseEnter={() => {
+                if (href !== "/") router.prefetch(href)
+              }}
+              onClick={() => setPendingHref(href)}
               className={`
                 flex flex-1 flex-col items-center gap-0.5 rounded-full py-2 transition-all duration-200
                 ${isActive ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground/70"}
