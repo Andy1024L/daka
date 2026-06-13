@@ -1,53 +1,4 @@
-const CACHE_VERSION = "daka-shell-v20260613-manual-update-v1"
-const APP_SHELL_URLS = [
-  "/",
-  "/stats",
-  "/data",
-  "/login",
-  "/manifest.json",
-  "/icon-192.png",
-  "/icon-512.png",
-  "/apple-icon.png",
-]
-
-async function cacheAppShell() {
-  const cache = await caches.open(CACHE_VERSION)
-  const staticAssetUrls = new Set()
-
-  await Promise.all(
-    APP_SHELL_URLS.map(async (url) => {
-      try {
-        const response = await fetch(url, { cache: "reload" })
-
-        if (response.ok) {
-          await cache.put(url, response.clone())
-        }
-
-        if (response.headers.get("content-type")?.includes("text/html")) {
-          const html = await response.text()
-          for (const match of html.matchAll(/\/_next\/static\/[^"'<>\s]+/g)) {
-            staticAssetUrls.add(match[0])
-          }
-        }
-      } catch {
-        // Keep installing even if one optional shell URL is temporarily unavailable.
-      }
-    })
-  )
-
-  await Promise.all(
-    [...staticAssetUrls].map(async (url) => {
-      try {
-        const response = await fetch(url, { cache: "reload" })
-        if (response.ok) {
-          await cache.put(url, response)
-        }
-      } catch {
-        // Runtime fetch handling will cache this asset later.
-      }
-    })
-  )
-}
+const CACHE_VERSION = "daka-shell-v20260613-manual-update-v2"
 
 async function deleteOldCaches() {
   const cacheNames = await caches.keys()
@@ -55,7 +6,7 @@ async function deleteOldCaches() {
 }
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(cacheAppShell())
+  event.waitUntil(Promise.resolve())
 })
 
 self.addEventListener("activate", (event) => {

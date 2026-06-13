@@ -106,21 +106,21 @@ export function AppUpdateControl() {
               : "检查更新"
 
   return (
-    <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-foreground">最近更新：{APP_UPDATED_AT}</p>
-        </div>
-        <button
-          type="button"
-          onClick={checkUpdate}
-          disabled={state === "checking" || state === "updating"}
-          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-border px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-60"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${state === "checking" || state === "updating" ? "animate-spin" : ""}`} />
-          {label}
-        </button>
-      </div>
-    </section>
+    <div className="flex flex-col items-center gap-1 pt-1">
+      {state !== "idle" && (
+        <p className="text-center text-[11px] leading-4 text-muted-foreground">
+          最近更新：{APP_UPDATED_AT} · {label}
+        </p>
+      )}
+      <button
+        type="button"
+        onClick={checkUpdate}
+        disabled={state === "checking" || state === "updating"}
+        className="inline-flex h-7 items-center gap-1 rounded-full px-2 text-[11px] font-medium text-muted-foreground/70 transition-colors hover:bg-muted/50 hover:text-muted-foreground disabled:pointer-events-none disabled:opacity-60"
+      >
+        <RefreshCw className={`h-3 w-3 ${state === "checking" || state === "updating" ? "animate-spin" : ""}`} />
+        {state === "idle" ? "检查更新" : state === "current" ? "再检查一次" : label}
+      </button>
+    </div>
   )
 }

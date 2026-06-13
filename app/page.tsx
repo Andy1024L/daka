@@ -94,7 +94,6 @@ export default function HomePage() {
         `}
       >
         <span className="text-3xl font-bold">x{count}</span>
-        <span className="text-xs opacity-80">次</span>
         {isAnimating && (
           <div className="absolute inset-0 flex items-center justify-center bg-white/20">
             <Check className="h-10 w-10 animate-bounce text-white" />
