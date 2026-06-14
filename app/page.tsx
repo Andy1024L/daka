@@ -1,13 +1,18 @@
 "use client"
 
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Check, Dumbbell, Sparkles } from "lucide-react"
+import DataPage from "@/app/data/page"
+import StatsPage from "@/app/stats/page"
+import { type AppTab, AppTabProvider } from "@/components/app-tab-context"
 import { AppUpdateControl } from "@/components/app-update-control"
 import { BottomNav } from "@/components/bottom-nav"
 import { SuccessToast } from "@/components/success-toast"
-import { createOptimisticRecord, saveCloudRecord } from "@/lib/records-api"
+import { createOptimisticRecord, loadCloudRecords, saveCloudRecord } from "@/lib/records-api"
+import { getRecords, mergeRecordLists } from "@/lib/storage"
+import type { CheckInRecord } from "@/types"
 
-export default function HomePage() {
+function HomeView({ onRecordCreated }: { onRecordCreated: (record: CheckInRecord) => void }) {
   const [toast, setToast] = useState({ visible: false, message: "" })
   const [animatingButton, setAnimatingButton] = useState<string | null>(null)
 
@@ -20,6 +25,7 @@ export default function HomePage() {
     (duration: number) => {
       const record = createOptimisticRecord("锻炼", duration)
 
+      onRecordCreated(record)
       setAnimatingButton(`workout-${duration}`)
       window.setTimeout(() => setAnimatingButton(null), 600)
       showToast(`锻炼 ${duration} 分钟`)
@@ -28,13 +34,14 @@ export default function HomePage() {
         showToast("云端保存失败，请稍后重试")
       })
     },
-    [showToast]
+    [onRecordCreated, showToast]
   )
 
   const handleStretchCheckIn = useCallback(
     (count: 1) => {
       const record = createOptimisticRecord("拉伸", count)
 
+      onRecordCreated(record)
       setAnimatingButton(`stretch-${count}`)
       window.setTimeout(() => setAnimatingButton(null), 600)
       showToast(`拉伸 x${count}`)
@@ -43,7 +50,7 @@ export default function HomePage() {
         showToast("云端保存失败，请稍后重试")
       })
     },
-    [showToast]
+    [onRecordCreated, showToast]
   )
 
   const WorkoutButton = ({ duration, isPrimary = false }: { duration: number; isPrimary?: boolean }) => {
@@ -147,5 +154,42 @@ export default function HomePage() {
       <SuccessToast message={toast.message} isVisible={toast.visible} />
       <BottomNav />
     </main>
+  )
+}
+
+export default function HomePage() {
+  const [activeTab, setActiveTab] = useState<AppTab>("home")
+  const [records, setRecords] = useState<CheckInRecord[]>(() => getRecords())
+
+  useEffect(() => {
+    let isMounted = true
+
+    loadCloudRecords()
+      .then((data) => {
+        if (isMounted) setRecords(data)
+      })
+      .catch(() => {
+        if (isMounted) setRecords((current) => (current.length > 0 ? current : getRecords()))
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  const handleRecordCreated = useCallback((record: CheckInRecord) => {
+    setRecords((current) => mergeRecordLists([record], current))
+  }, [])
+
+  return (
+    <AppTabProvider value={{ activeTab, setActiveTab }}>
+      {activeTab === "home" ? (
+        <HomeView onRecordCreated={handleRecordCreated} />
+      ) : activeTab === "stats" ? (
+        <StatsPage records={records} />
+      ) : (
+        <DataPage records={records} onRecordsChange={setRecords} />
+      )}
+    </AppTabProvider>
   )
 }

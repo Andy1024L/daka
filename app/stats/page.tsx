@@ -34,12 +34,17 @@ function parseRecordDate(value: string) {
   }
 }
 
-export default function StatsPage() {
-  const [records, setRecords] = useState<CheckInRecord[]>(() => getRecords())
+export default function StatsPage({ records: externalRecords }: { records?: CheckInRecord[] } = {}) {
+  const [records, setRecords] = useState<CheckInRecord[]>(() => externalRecords ?? getRecords())
   const [activeTab, setActiveTab] = useState<TabType>("锻炼")
   const [viewMode, setViewMode] = useState<"month" | "year">("month")
   const [currentDate, setCurrentDate] = useState(new Date())
   useEffect(() => {
+    if (externalRecords) {
+      setRecords(externalRecords)
+      return
+    }
+
     let isMounted = true
 
     loadCloudRecords()
@@ -53,7 +58,7 @@ export default function StatsPage() {
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [externalRecords])
 
   const year = currentDate.getFullYear()
   const month = currentDate.getMonth()

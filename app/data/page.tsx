@@ -15,8 +15,14 @@ import {
 } from "@/lib/records-api"
 import type { CheckInRecord } from "@/types"
 
-export default function DataPage() {
-  const [records, setRecords] = useState<CheckInRecord[]>(() => getRecords())
+export default function DataPage({
+  records: externalRecords,
+  onRecordsChange,
+}: {
+  records?: CheckInRecord[]
+  onRecordsChange?: (records: CheckInRecord[]) => void
+} = {}) {
+  const [records, setRecords] = useState<CheckInRecord[]>(() => externalRecords ?? getRecords())
   const [toast, setToast] = useState({ visible: false, message: "" })
   const [showConfirm, setShowConfirm] = useState(false)
   const [editingRecord, setEditingRecord] = useState<CheckInRecord | null>(null)
@@ -37,16 +43,27 @@ export default function DataPage() {
     try {
       const data = await loadCloudRecords()
       setRecords(data)
+      onRecordsChange?.(data)
       setError(null)
     } catch (err) {
-      setRecords((current) => (current.length > 0 ? current : getRecords()))
+      setRecords((current) => {
+        const fallback = current.length > 0 ? current : getRecords()
+        onRecordsChange?.(fallback)
+        return fallback
+      })
       setError(err instanceof Error ? err.message : "云端数据加载失败")
     }
-  }, [])
+  }, [onRecordsChange])
 
   useEffect(() => {
+    if (externalRecords) {
+      setRecords(externalRecords)
+      setIsLoading(false)
+      return
+    }
+
     refreshRecords().finally(() => setIsLoading(false))
-  }, [refreshRecords])
+  }, [externalRecords, refreshRecords])
 
   const handleExport = async () => {
     if (isExporting) return
@@ -100,12 +117,15 @@ export default function DataPage() {
 
   const handleDeleteRecord = (id: string) => {
     const previousRecords = records
-    setRecords((current) => current.filter((record) => record.id !== id))
+    const nextRecords = records.filter((record) => record.id !== id)
+    setRecords(nextRecords)
+    onRecordsChange?.(nextRecords)
 
     deleteCloudRecord(id)
       .then(() => showToast("记录已删除"))
       .catch(() => {
         setRecords(previousRecords)
+        onRecordsChange?.(previousRecords)
         showToast("删除失败，请重试")
       })
   }
@@ -126,14 +146,17 @@ export default function DataPage() {
     }
 
     const previousRecords = records
-    setRecords((current) =>
-      current.map((record) => (record.id === editingRecord.id ? { ...record, date: editDate, duration } : record))
+    const nextRecords = records.map((record) =>
+      record.id === editingRecord.id ? { ...record, date: editDate, duration } : record
     )
+    setRecords(nextRecords)
+    onRecordsChange?.(nextRecords)
     setEditingRecord(null)
     showToast("记录已更新")
 
     updateCloudRecord(editingRecord.id, { date: editDate, duration }).catch(() => {
       setRecords(previousRecords)
+      onRecordsChange?.(previousRecords)
       showToast("更新失败，请重试")
     })
   }
