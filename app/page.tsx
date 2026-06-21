@@ -35,7 +35,9 @@ function RecentWeeks({ records, kind }: { records: CheckInRecord[]; kind: "worko
   const thisWeekStart = getMonday(today)
   const lastWeekStart = new Date(thisWeekStart)
   lastWeekStart.setDate(thisWeekStart.getDate() - 7)
-  const weeks = [getWeekDays(lastWeekStart), getWeekDays(thisWeekStart)]
+  const twoWeeksAgoStart = new Date(thisWeekStart)
+  twoWeeksAgoStart.setDate(thisWeekStart.getDate() - 14)
+  const weeks = [getWeekDays(twoWeeksAgoStart), getWeekDays(lastWeekStart), getWeekDays(thisWeekStart)]
   const isWorkout = kind === "workout"
 
   const getValue = (date: Date) => {
@@ -60,15 +62,15 @@ function RecentWeeks({ records, kind }: { records: CheckInRecord[]; kind: "worko
   }
 
   return (
-    <div className="mb-4">
-      <div className="mb-1 grid grid-cols-7 gap-1 text-center text-[9px] text-muted-foreground">
+    <div className="mb-4 w-full">
+      <div className="mb-1.5 grid grid-cols-7 gap-1.5 text-center text-[10px] text-muted-foreground">
         {weekDayLabels.map((label) => (
           <span key={label}>{label}</span>
         ))}
       </div>
-      <div className="space-y-1">
+      <div className="space-y-1.5">
         {weeks.map((days) => (
-          <div key={formatLocalDate(days[0])} className="grid grid-cols-7 gap-1">
+          <div key={formatLocalDate(days[0])} className="grid grid-cols-7 gap-1.5">
             {days.map((date) => {
               const value = getValue(date)
               const isToday = formatLocalDate(date) === formatLocalDate(today)
@@ -76,7 +78,7 @@ function RecentWeeks({ records, kind }: { records: CheckInRecord[]; kind: "worko
               return (
                 <span
                   key={formatLocalDate(date)}
-                  className={`flex h-7 items-center justify-center rounded-md text-[10px] font-semibold ${getCellClass(value)} ${
+                  className={`flex aspect-square items-center justify-center rounded-lg text-xs font-semibold ${getCellClass(value)} ${
                     isToday ? "ring-1 ring-foreground/35" : ""
                   }`}
                 >
@@ -144,7 +146,7 @@ function HomeView({ records, onRecordCreated }: { records: CheckInRecord[]; onRe
     return (
       <button
         onClick={() => handleWorkoutCheckIn(duration)}
-        className={`relative h-14 overflow-hidden rounded-xl ${colorClass} flex flex-col items-center justify-center text-white font-semibold shadow-sm transition-all duration-200 hover:scale-[1.02] active:scale-95 ${
+        className={`relative h-16 overflow-hidden rounded-xl ${colorClass} flex flex-col items-center justify-center text-white font-semibold shadow-sm transition-all duration-200 hover:scale-[1.02] active:scale-95 ${
           isAnimating ? "ring-4 ring-white/50" : ""
         }`}
       >
@@ -165,7 +167,7 @@ function HomeView({ records, onRecordCreated }: { records: CheckInRecord[]; onRe
     return (
       <button
         onClick={() => handleStretchCheckIn(count)}
-        className={`relative h-14 w-full overflow-hidden rounded-xl bg-gradient-to-br from-teal-400 to-teal-500 text-white font-semibold shadow-sm transition-all duration-200 hover:scale-[1.01] active:scale-95 ${
+        className={`relative h-16 w-full overflow-hidden rounded-xl bg-gradient-to-br from-teal-400 to-teal-500 text-white font-semibold shadow-sm transition-all duration-200 hover:scale-[1.01] active:scale-95 ${
           isAnimating ? "ring-4 ring-white/50" : ""
         }`}
       >
@@ -180,15 +182,15 @@ function HomeView({ records, onRecordCreated }: { records: CheckInRecord[]; onRe
   }
 
   return (
-    <main className="min-h-screen bg-background pb-24">
+    <main className="min-h-[100dvh] bg-background">
       <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-lg">
         <div className="mx-auto max-w-md px-4 py-3">
           <h1 className="text-center text-xl font-bold text-foreground">每日打卡</h1>
         </div>
       </header>
 
-      <div className="mx-auto max-w-md space-y-3 px-4 py-3">
-        <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <div className="mx-auto w-full max-w-md space-y-3 px-2.5 py-3">
+        <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
           <div className="mb-3 flex items-center justify-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-100">
               <Dumbbell className="h-5 w-5 text-orange-600" />
@@ -204,7 +206,7 @@ function HomeView({ records, onRecordCreated }: { records: CheckInRecord[]; onRe
           </div>
         </section>
 
-        <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+        <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
           <div className="mb-3 flex items-center justify-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-100">
               <Sparkles className="h-5 w-5 text-teal-600" />
@@ -217,7 +219,9 @@ function HomeView({ records, onRecordCreated }: { records: CheckInRecord[]; onRe
           </div>
         </section>
 
-        <AppUpdateControl />
+        <div>
+          <AppUpdateControl />
+        </div>
       </div>
 
       <SuccessToast message={toast.message} isVisible={toast.visible} />
