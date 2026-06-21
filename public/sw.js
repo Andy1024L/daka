@@ -1,4 +1,4 @@
-const CACHE_VERSION = "daka-shell-v20260613-manual-update-v2"
+const CACHE_VERSION = "daka-shell-v20260621-force-refresh-v3"
 
 async function deleteOldCaches() {
   const cacheNames = await caches.keys()

@@ -38,11 +38,25 @@ async function activateWaitingWorker(registration: ServiceWorkerRegistration) {
   return true
 }
 
+async function reloadFreshAppShell() {
+  if ("caches" in window) {
+    const cacheNames = await caches.keys()
+    await Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName)))
+  }
+
+  const registration = await navigator.serviceWorker?.getRegistration()
+  await registration?.unregister()
+
+  const nextUrl = new URL(window.location.href)
+  nextUrl.searchParams.set("__app_update", String(Date.now()))
+  window.location.replace(nextUrl.toString())
+}
+
 async function updateCachedApp(onStateChange: (state: UpdateState) => void) {
   if (!("serviceWorker" in navigator)) {
     onStateChange("complete")
     await delay(900)
-    window.location.reload()
+    await reloadFreshAppShell()
     return
   }
 
@@ -51,7 +65,11 @@ async function updateCachedApp(onStateChange: (state: UpdateState) => void) {
     if (hasReloaded) return
     hasReloaded = true
     onStateChange("complete")
-    window.setTimeout(() => window.location.reload(), 900)
+    window.setTimeout(() => {
+      const nextUrl = new URL(window.location.href)
+      nextUrl.searchParams.set("__app_update", String(Date.now()))
+      window.location.replace(nextUrl.toString())
+    }, 900)
   })
 
   onStateChange("downloading")
@@ -65,7 +83,7 @@ async function updateCachedApp(onStateChange: (state: UpdateState) => void) {
   if (!activated) {
     onStateChange("complete")
     await delay(900)
-    window.location.reload()
+    await reloadFreshAppShell()
   }
 }
 
@@ -161,4 +179,3 @@ export function AppUpdateControl() {
     </div>
   )
 }
-
