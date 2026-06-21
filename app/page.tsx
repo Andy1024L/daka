@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Check, Dumbbell, Sparkles } from "lucide-react"
 import DataPage from "@/app/data/page"
 import StatsPage from "@/app/stats/page"
@@ -9,10 +9,89 @@ import { AppUpdateControl } from "@/components/app-update-control"
 import { BottomNav } from "@/components/bottom-nav"
 import { SuccessToast } from "@/components/success-toast"
 import { createOptimisticRecord, loadCloudRecords, saveCloudRecord } from "@/lib/records-api"
-import { getRecords, mergeRecordLists } from "@/lib/storage"
+import { formatLocalDate, getDailyStats, getRecords, mergeRecordLists } from "@/lib/storage"
 import type { CheckInRecord } from "@/types"
 
-function HomeView({ onRecordCreated }: { onRecordCreated: (record: CheckInRecord) => void }) {
+const weekDayLabels = ["一", "二", "三", "四", "五", "六", "日"]
+
+function getMonday(date: Date) {
+  const result = new Date(date)
+  result.setHours(0, 0, 0, 0)
+  result.setDate(result.getDate() - ((result.getDay() + 6) % 7))
+  return result
+}
+
+function getWeekDays(start: Date) {
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(start)
+    date.setDate(start.getDate() + index)
+    return date
+  })
+}
+
+function RecentWeeks({ records, kind }: { records: CheckInRecord[]; kind: "workout" | "stretch" }) {
+  const dailyStats = useMemo(() => getDailyStats(records), [records])
+  const today = new Date()
+  const thisWeekStart = getMonday(today)
+  const lastWeekStart = new Date(thisWeekStart)
+  lastWeekStart.setDate(thisWeekStart.getDate() - 7)
+  const weeks = [getWeekDays(lastWeekStart), getWeekDays(thisWeekStart)]
+  const isWorkout = kind === "workout"
+
+  const getValue = (date: Date) => {
+    const stats = dailyStats.get(formatLocalDate(date))
+    return isWorkout ? (stats?.workout ?? 0) : (stats?.stretch ?? 0)
+  }
+
+  const getCellClass = (value: number) => {
+    if (isWorkout) {
+      if (value >= 120) return "bg-red-500 text-white"
+      if (value >= 90) return "bg-orange-400 text-white"
+      if (value >= 60) return "bg-orange-300 text-orange-950"
+      if (value >= 30) return "bg-orange-200 text-orange-900"
+      if (value > 0) return "bg-orange-100 text-orange-800"
+    } else if (value >= 2) {
+      return "bg-[#009360] text-white"
+    } else if (value >= 1) {
+      return "bg-teal-100 text-teal-900"
+    }
+
+    return "border border-dashed border-muted-foreground/20 text-muted-foreground"
+  }
+
+  return (
+    <div className="mb-4">
+      <div className="mb-1 grid grid-cols-7 gap-1 text-center text-[9px] text-muted-foreground">
+        {weekDayLabels.map((label) => (
+          <span key={label}>{label}</span>
+        ))}
+      </div>
+      <div className="space-y-1">
+        {weeks.map((days) => (
+          <div key={formatLocalDate(days[0])} className="grid grid-cols-7 gap-1">
+            {days.map((date) => {
+              const value = getValue(date)
+              const isToday = formatLocalDate(date) === formatLocalDate(today)
+
+              return (
+                <span
+                  key={formatLocalDate(date)}
+                  className={`flex h-7 items-center justify-center rounded-md text-[10px] font-semibold ${getCellClass(value)} ${
+                    isToday ? "ring-1 ring-foreground/35" : ""
+                  }`}
+                >
+                  {value > 0 ? (isWorkout ? value : `x${value}`) : date.getDate()}
+                </span>
+              )
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function HomeView({ records, onRecordCreated }: { records: CheckInRecord[]; onRecordCreated: (record: CheckInRecord) => void }) {
   const [toast, setToast] = useState({ visible: false, message: "" })
   const [animatingButton, setAnimatingButton] = useState<string | null>(null)
 
@@ -24,7 +103,6 @@ function HomeView({ onRecordCreated }: { onRecordCreated: (record: CheckInRecord
   const handleWorkoutCheckIn = useCallback(
     (duration: number) => {
       const record = createOptimisticRecord("锻炼", duration)
-
       onRecordCreated(record)
       setAnimatingButton(`workout-${duration}`)
       window.setTimeout(() => setAnimatingButton(null), 600)
@@ -40,7 +118,6 @@ function HomeView({ onRecordCreated }: { onRecordCreated: (record: CheckInRecord
   const handleStretchCheckIn = useCallback(
     (count: 1) => {
       const record = createOptimisticRecord("拉伸", count)
-
       onRecordCreated(record)
       setAnimatingButton(`stretch-${count}`)
       window.setTimeout(() => setAnimatingButton(null), 600)
@@ -53,7 +130,7 @@ function HomeView({ onRecordCreated }: { onRecordCreated: (record: CheckInRecord
     [onRecordCreated, showToast]
   )
 
-  const WorkoutButton = ({ duration, isPrimary = false }: { duration: number; isPrimary?: boolean }) => {
+  const WorkoutButton = ({ duration }: { duration: number }) => {
     const isAnimating = animatingButton === `workout-${duration}`
     const colorClass =
       duration >= 120
@@ -67,20 +144,15 @@ function HomeView({ onRecordCreated }: { onRecordCreated: (record: CheckInRecord
     return (
       <button
         onClick={() => handleWorkoutCheckIn(duration)}
-        className={`
-          relative overflow-hidden rounded-2xl
-          ${colorClass}
-          ${isPrimary ? "col-span-3 h-28" : "h-20"}
-          flex flex-col items-center justify-center text-white font-semibold shadow-lg
-          transition-all duration-200 ease-out hover:scale-[1.02] hover:shadow-xl active:scale-95
-          ${isAnimating ? "ring-4 ring-white/50" : ""}
-        `}
+        className={`relative h-14 overflow-hidden rounded-xl ${colorClass} flex flex-col items-center justify-center text-white font-semibold shadow-sm transition-all duration-200 hover:scale-[1.02] active:scale-95 ${
+          isAnimating ? "ring-4 ring-white/50" : ""
+        }`}
       >
-        <span className={`${isPrimary ? "text-4xl" : "text-2xl"} font-bold`}>{duration}</span>
-        <span className={`${isPrimary ? "text-base" : "text-xs"} opacity-80`}>分钟</span>
+        <span className="text-xl font-bold">{duration}</span>
+        <span className="text-[10px] opacity-80">分钟</span>
         {isAnimating && (
           <div className="absolute inset-0 flex items-center justify-center bg-white/20">
-            <Check className="h-12 w-12 animate-bounce text-white" />
+            <Check className="h-7 w-7 animate-bounce text-white" />
           </div>
         )}
       </button>
@@ -93,17 +165,14 @@ function HomeView({ onRecordCreated }: { onRecordCreated: (record: CheckInRecord
     return (
       <button
         onClick={() => handleStretchCheckIn(count)}
-        className={`
-          relative h-24 overflow-hidden rounded-2xl bg-gradient-to-br from-teal-400 to-teal-500
-          flex flex-col items-center justify-center text-white font-semibold shadow-lg
-          transition-all duration-200 ease-out hover:scale-[1.02] hover:shadow-xl active:scale-95
-          ${isAnimating ? "ring-4 ring-white/50" : ""}
-        `}
+        className={`relative h-14 w-full overflow-hidden rounded-xl bg-gradient-to-br from-teal-400 to-teal-500 text-white font-semibold shadow-sm transition-all duration-200 hover:scale-[1.01] active:scale-95 ${
+          isAnimating ? "ring-4 ring-white/50" : ""
+        }`}
       >
-        <span className="text-3xl font-bold">x{count}</span>
+        <span className="text-2xl font-bold">x{count}</span>
         {isAnimating && (
           <div className="absolute inset-0 flex items-center justify-center bg-white/20">
-            <Check className="h-10 w-10 animate-bounce text-white" />
+            <Check className="h-7 w-7 animate-bounce text-white" />
           </div>
         )}
       </button>
@@ -113,37 +182,37 @@ function HomeView({ onRecordCreated }: { onRecordCreated: (record: CheckInRecord
   return (
     <main className="min-h-screen bg-background pb-24">
       <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-lg">
-        <div className="mx-auto max-w-md px-4 py-4">
+        <div className="mx-auto max-w-md px-4 py-3">
           <h1 className="text-center text-xl font-bold text-foreground">每日打卡</h1>
         </div>
       </header>
 
-      <div className="mx-auto max-w-md space-y-6 px-4 py-6">
-        <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-          <div className="mb-5 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-100">
-              <Dumbbell className="h-6 w-6 text-orange-600" />
+      <div className="mx-auto max-w-md space-y-3 px-4 py-3">
+        <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+          <div className="mb-3 flex items-center justify-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-100">
+              <Dumbbell className="h-5 w-5 text-orange-600" />
             </div>
-            <h2 className="text-lg font-bold text-foreground">锻炼</h2>
+            <h2 className="text-base font-bold text-foreground">锻炼</h2>
           </div>
-
-          <div className="grid grid-cols-3 gap-3">
-            <WorkoutButton duration={90} isPrimary />
+          <RecentWeeks records={records} kind="workout" />
+          <div className="grid grid-cols-4 gap-2">
             <WorkoutButton duration={30} />
             <WorkoutButton duration={60} />
+            <WorkoutButton duration={90} />
             <WorkoutButton duration={120} />
           </div>
         </section>
 
-        <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-          <div className="mb-5 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-100">
-              <Sparkles className="h-6 w-6 text-teal-600" />
+        <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+          <div className="mb-3 flex items-center justify-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-100">
+              <Sparkles className="h-5 w-5 text-teal-600" />
             </div>
-            <h2 className="text-lg font-bold text-foreground">拉伸</h2>
+            <h2 className="text-base font-bold text-foreground">拉伸</h2>
           </div>
-
-          <div className="grid grid-cols-1 gap-3">
+          <RecentWeeks records={records} kind="stretch" />
+          <div className="w-full">
             <StretchButton count={1} />
           </div>
         </section>
@@ -184,7 +253,7 @@ export default function HomePage() {
   return (
     <AppTabProvider value={{ activeTab, setActiveTab }}>
       {activeTab === "home" ? (
-        <HomeView onRecordCreated={handleRecordCreated} />
+        <HomeView records={records} onRecordCreated={handleRecordCreated} />
       ) : activeTab === "stats" ? (
         <StatsPage records={records} />
       ) : (
