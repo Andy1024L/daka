@@ -62,15 +62,15 @@ function RecentWeeks({ records, kind }: { records: CheckInRecord[]; kind: "worko
   }
 
   return (
-    <div className="mb-4 w-full">
-      <div className="mb-1.5 grid grid-cols-7 gap-1.5 text-center text-[10px] text-muted-foreground">
+    <div className="mb-3 w-full">
+      <div className="mb-1 grid grid-cols-7 justify-items-center gap-1 text-center text-[9px] text-muted-foreground">
         {weekDayLabels.map((label) => (
           <span key={label}>{label}</span>
         ))}
       </div>
-      <div className="space-y-1.5">
+      <div className="space-y-1">
         {weeks.map((days) => (
-          <div key={formatLocalDate(days[0])} className="grid grid-cols-7 gap-1.5">
+          <div key={formatLocalDate(days[0])} className="grid grid-cols-7 justify-items-center gap-1">
             {days.map((date) => {
               const value = getValue(date)
               const isToday = formatLocalDate(date) === formatLocalDate(today)
@@ -78,7 +78,7 @@ function RecentWeeks({ records, kind }: { records: CheckInRecord[]; kind: "worko
               return (
                 <span
                   key={formatLocalDate(date)}
-                  className={`flex aspect-square items-center justify-center rounded-lg text-xs font-semibold ${getCellClass(value)} ${
+                  className={`flex h-8 w-8 items-center justify-center rounded-md text-[10px] font-semibold ${getCellClass(value)} ${
                     isToday ? "ring-1 ring-foreground/35" : ""
                   }`}
                 >
@@ -111,7 +111,7 @@ function HomeView({ records, onRecordCreated }: { records: CheckInRecord[]; onRe
       showToast(`锻炼 ${duration} 分钟`)
 
       saveCloudRecord(record).catch(() => {
-        showToast("云端保存失败，请稍后重试")
+        showToast("已保存到本机，联网后会自动同步")
       })
     },
     [onRecordCreated, showToast]
@@ -126,7 +126,7 @@ function HomeView({ records, onRecordCreated }: { records: CheckInRecord[]; onRe
       showToast(`拉伸 x${count}`)
 
       saveCloudRecord(record).catch(() => {
-        showToast("云端保存失败，请稍后重试")
+        showToast("已保存到本机，联网后会自动同步")
       })
     },
     [onRecordCreated, showToast]
@@ -146,7 +146,7 @@ function HomeView({ records, onRecordCreated }: { records: CheckInRecord[]; onRe
     return (
       <button
         onClick={() => handleWorkoutCheckIn(duration)}
-        className={`relative h-16 overflow-hidden rounded-xl ${colorClass} flex flex-col items-center justify-center text-white font-semibold shadow-sm transition-all duration-200 hover:scale-[1.02] active:scale-95 ${
+        className={`relative h-14 overflow-hidden rounded-xl ${colorClass} flex flex-col items-center justify-center text-white font-semibold shadow-sm transition-all duration-200 hover:scale-[1.02] active:scale-95 ${
           isAnimating ? "ring-4 ring-white/50" : ""
         }`}
       >
@@ -167,7 +167,7 @@ function HomeView({ records, onRecordCreated }: { records: CheckInRecord[]; onRe
     return (
       <button
         onClick={() => handleStretchCheckIn(count)}
-        className={`relative h-16 w-full overflow-hidden rounded-xl bg-gradient-to-br from-teal-400 to-teal-500 text-white font-semibold shadow-sm transition-all duration-200 hover:scale-[1.01] active:scale-95 ${
+        className={`relative h-14 w-full overflow-hidden rounded-xl bg-gradient-to-br from-teal-400 to-teal-500 text-white font-semibold shadow-sm transition-all duration-200 hover:scale-[1.01] active:scale-95 ${
           isAnimating ? "ring-4 ring-white/50" : ""
         }`}
       >
@@ -190,8 +190,8 @@ function HomeView({ records, onRecordCreated }: { records: CheckInRecord[]; onRe
       </header>
 
       <div className="mx-auto w-full max-w-md space-y-3 px-2.5 py-3">
-        <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-          <div className="mb-3 flex items-center justify-center gap-2">
+        <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+          <div className="mb-2.5 flex items-center justify-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-100">
               <Dumbbell className="h-5 w-5 text-orange-600" />
             </div>
@@ -206,8 +206,8 @@ function HomeView({ records, onRecordCreated }: { records: CheckInRecord[]; onRe
           </div>
         </section>
 
-        <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-          <div className="mb-3 flex items-center justify-center gap-2">
+        <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+          <div className="mb-2.5 flex items-center justify-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-100">
               <Sparkles className="h-5 w-5 text-teal-600" />
             </div>
@@ -239,7 +239,7 @@ export default function HomePage() {
 
     loadCloudRecords()
       .then((data) => {
-        if (isMounted) setRecords(data)
+        if (isMounted) setRecords((current) => mergeRecordLists(data, current))
       })
       .catch(() => {
         if (isMounted) setRecords((current) => (current.length > 0 ? current : getRecords()))

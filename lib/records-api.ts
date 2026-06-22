@@ -55,7 +55,7 @@ export async function loadCloudRecords(): Promise<CheckInRecord[]> {
   await syncPendingRecords().catch(() => undefined)
 
   const data = await requestJson<{ records: CheckInRecord[] }>("/api/records")
-  const records = mergeRecordLists(data.records, getPendingSyncRecords())
+  const records = mergeRecordLists(data.records, getRecords(), getPendingSyncRecords())
   saveRecords(records)
   return records
 }
