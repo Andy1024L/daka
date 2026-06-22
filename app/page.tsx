@@ -45,7 +45,7 @@ function RecentWeeks({ records, kind }: { records: CheckInRecord[]; kind: "worko
     return isWorkout ? (stats?.workout ?? 0) : (stats?.stretch ?? 0)
   }
 
-  const getCellClass = (value: number) => {
+  const getCellClass = (value: number, isToday: boolean) => {
     if (isWorkout) {
       if (value >= 120) return "bg-red-500 text-white"
       if (value >= 90) return "bg-orange-400 text-white"
@@ -58,19 +58,21 @@ function RecentWeeks({ records, kind }: { records: CheckInRecord[]; kind: "worko
       return "bg-teal-100 text-teal-900"
     }
 
-    return "border border-dashed border-muted-foreground/20 text-muted-foreground"
+    return isToday
+      ? "border-2 border-foreground/45 text-foreground"
+      : "border border-dashed border-muted-foreground/25 text-muted-foreground"
   }
 
   return (
     <div className="mb-3 w-full">
-      <div className="mb-1 grid grid-cols-7 justify-items-center gap-1 text-center text-[9px] text-muted-foreground">
+      <div className="mb-2 grid grid-cols-7 gap-1.5 text-center text-[9px] text-muted-foreground">
         {weekDayLabels.map((label) => (
           <span key={label}>{label}</span>
         ))}
       </div>
-      <div className="space-y-1">
+      <div className="space-y-2.5">
         {weeks.map((days) => (
-          <div key={formatLocalDate(days[0])} className="grid grid-cols-7 justify-items-center gap-1">
+          <div key={formatLocalDate(days[0])} className="grid grid-cols-7 gap-1.5">
             {days.map((date) => {
               const value = getValue(date)
               const isToday = formatLocalDate(date) === formatLocalDate(today)
@@ -78,9 +80,7 @@ function RecentWeeks({ records, kind }: { records: CheckInRecord[]; kind: "worko
               return (
                 <span
                   key={formatLocalDate(date)}
-                  className={`flex h-8 w-8 items-center justify-center rounded-md text-[10px] font-semibold ${getCellClass(value)} ${
-                    isToday ? "ring-1 ring-foreground/35" : ""
-                  }`}
+                  className={`flex aspect-[1.18/1] w-[70%] justify-self-center items-center justify-center rounded-md text-[10px] font-semibold ${getCellClass(value, isToday)}`}
                 >
                   {value > 0 ? (isWorkout ? value : `x${value}`) : date.getDate()}
                 </span>
