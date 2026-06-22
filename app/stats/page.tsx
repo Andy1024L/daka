@@ -215,8 +215,8 @@ export default function StatsPage({ records: externalRecords }: { records?: Chec
   const getWorkoutHeatClass = (minutes = 0) => {
     if (minutes >= 120) return "bg-red-500 text-white"
     if (minutes >= 90) return "bg-orange-400 text-white"
-    if (minutes >= 60) return "bg-orange-300 text-orange-950"
-    if (minutes >= 30) return "bg-orange-200 text-orange-900"
+    if (minutes >= 60) return "bg-orange-300 text-white"
+    if (minutes >= 30) return "bg-orange-200 text-white"
     if (minutes > 0) return "bg-orange-100 text-orange-800"
     return ""
   }

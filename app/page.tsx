@@ -49,8 +49,8 @@ function RecentWeeks({ records, kind }: { records: CheckInRecord[]; kind: "worko
     if (isWorkout) {
       if (value >= 120) return "bg-red-500 text-white"
       if (value >= 90) return "bg-orange-400 text-white"
-      if (value >= 60) return "bg-orange-300 text-orange-950"
-      if (value >= 30) return "bg-orange-200 text-orange-900"
+      if (value >= 60) return "bg-orange-300 text-white"
+      if (value >= 30) return "bg-orange-200 text-white"
       if (value > 0) return "bg-orange-100 text-orange-800"
     } else if (value >= 2) {
       return "bg-[#009360] text-white"
