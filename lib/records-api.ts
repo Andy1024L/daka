@@ -6,6 +6,7 @@ import {
   mergeRecordLists,
   queuePendingSyncRecord,
   removePendingSyncRecords,
+  savePendingSyncRecords,
   saveRecords,
 } from "@/lib/storage"
 
@@ -55,7 +56,26 @@ export async function loadCloudRecords(): Promise<CheckInRecord[]> {
   await syncPendingRecords().catch(() => undefined)
 
   const data = await requestJson<{ records: CheckInRecord[] }>("/api/records")
-  const records = mergeRecordLists(data.records, getRecords(), getPendingSyncRecords())
+  const localRecords = getRecords()
+  const pendingRecords = getPendingSyncRecords()
+  const cloudRecordIds = new Set(data.records.map((record) => record.id))
+  const localOnlyRecords = mergeRecordLists(localRecords, pendingRecords).filter((record) => !cloudRecordIds.has(record.id))
+  let savedLocalRecords: CheckInRecord[] = []
+
+  if (localOnlyRecords.length > 0) {
+    const syncedData = await requestJson<{ records: CheckInRecord[] }>("/api/records", {
+      method: "POST",
+      body: JSON.stringify({ records: localOnlyRecords }),
+    }).catch(() => {
+      savePendingSyncRecords(mergeRecordLists(pendingRecords, localOnlyRecords))
+      return { records: [] }
+    })
+
+    savedLocalRecords = syncedData.records.length > 0 ? syncedData.records : []
+    removePendingSyncRecords(savedLocalRecords.map((record) => record.id))
+  }
+
+  const records = mergeRecordLists(data.records, localRecords, pendingRecords, savedLocalRecords)
   saveRecords(records)
   return records
 }
@@ -75,13 +95,11 @@ export function createOptimisticRecord(category: CheckInRecord["category"], dura
 
 export async function saveCloudRecord(record: CheckInRecord): Promise<CheckInRecord> {
   saveRecords(mergeRecords(getRecords(), record))
+  queuePendingSyncRecord(record)
 
   const data = await requestJson<{ records: CheckInRecord[] }>("/api/records", {
     method: "POST",
     body: JSON.stringify(record),
-  }).catch((error) => {
-    queuePendingSyncRecord(record)
-    throw error
   })
 
   const savedRecord = data.records[0] ?? record
