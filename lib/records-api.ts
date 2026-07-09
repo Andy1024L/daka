@@ -15,6 +15,17 @@ function mergeRecords(records: CheckInRecord[], nextRecord: CheckInRecord): Chec
   return [nextRecord, ...nextRecords]
 }
 
+function isLoginRedirect(response: Response) {
+  return response.redirected && new URL(response.url).pathname === "/login"
+}
+
+function redirectToLogin() {
+  if (typeof window === "undefined") return
+
+  const next = `${window.location.pathname}${window.location.search}${window.location.hash}`
+  window.location.assign(`/login?next=${encodeURIComponent(next)}`)
+}
+
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
@@ -23,7 +34,18 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
       ...init?.headers,
     },
   })
-  const data = await response.json().catch(() => ({}))
+  const contentType = response.headers.get("content-type") ?? ""
+  const isJson = contentType.includes("application/json")
+  const data = isJson ? await response.json().catch(() => ({})) : {}
+
+  if (isLoginRedirect(response)) {
+    redirectToLogin()
+    throw new Error("需要重新登录")
+  }
+
+  if (!isJson) {
+    throw new Error("云端响应异常，请重新打开应用")
+  }
 
   if (!response.ok) {
     throw new Error(typeof data.error === "string" ? data.error : "请求失败")
