@@ -97,7 +97,7 @@
 ## 提交与部署
 
 - 用户偏好直接推送到 GitHub 的 `main` 分支，不需要创建 PR。
-- EdgeOne Makers 的现有项目仍名为 `daka-kv`（项目 ID `makers-kapdb028mmbi`），已核实关联 GitHub `Andy1024L/daka`；仓库更名不代表云端项目、KV 命名空间或域名需要重建。推送 `main` 后核对 EdgeOne 构建结果，再读取线上 `/version.json` 和 API 验证部署完成。该项目为 `Github` 类型，不能用 `edgeone makers deploy` 直接上传目录或 ZIP。
+- EdgeOne Makers 项目名和 GitHub 仓库名统一为 `daka`（项目 ID `makers-kapdb028mmbi`，仓库 `Andy1024L/daka`）。云端项目改名只更新 `Name`，保留项目 ID、域名、环境变量和 KV 绑定；本地 `.edgeone/project.json` 同步名称。推送 `main` 后核对 EdgeOne 构建结果，再读取线上 `/version.json` 和 API 验证部署完成。该项目为 `Github` 类型，不能用 `edgeone makers deploy` 直接上传目录或 ZIP。
 - `6668080.xyz` 的 HTTPS 使用 EdgeOne「申请免费证书 + 自动验证」，依赖 CNAME 持续正确指向 EdgeOne，由平台自动续签和部署。所有端同时同步失败时，先检查 TLS 证书有效期及浏览器 `ERR_CERT_DATE_INVALID`，不要清缓存、忽略证书错误或把各端缓存强行互相覆盖。
 - 不要无故创建长期分支；临时分支用完要保持仓库干净。
 - 推送前检查：

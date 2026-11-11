@@ -7,10 +7,10 @@
 - 正式网站：https://6668080.xyz
 - 唯一维护仓库：https://github.com/Andy1024L/daka，分支 `main`。
 - 本地目录：`C:\1.个人开发\12_daka`。
-- 托管：腾讯云 EdgeOne Makers / Pages，现有云端项目仍叫 `daka-kv`，项目 ID 为 `makers-kapdb028mmbi`。
+- 托管：腾讯云 EdgeOne Makers / Pages，云端项目名为 `daka`，项目 ID 为 `makers-kapdb028mmbi`。
 - 数据：EdgeOne KV，通过 `/api/records` 读写；前端先保存到本地，联网后自动同步。
 
-此前的 `daka-kv` 仓库已更名为 `daka`；旧 Supabase 仓库和本地副本已删除。云端项目名与 GitHub 仓库名可以不同，保留现有云端项目和 KV 绑定即可。
+此前的 `daka-kv` 仓库与云端项目已统一更名为 `daka`；旧 Supabase 仓库和本地副本已删除。云端改名保留了原项目 ID、域名、环境变量和 KV 绑定，打卡记录保持完整。
 
 ## 本地运行
 
