@@ -3,7 +3,8 @@
 ## 项目背景
 
 - 这是一个个人打卡 PWA 应用，主要功能是记录“锻炼”和“拉伸”，并在首页、统计页、数据页查看和管理记录。
-- 本仓库 `1.daka-edgeone-kv`（GitHub `Andy1024L/daka-kv`）是 `https://6668080.xyz` 当前生产源码；旁边的 `1.daka` 是旧 Supabase 版本，不能直接用于生产部署。
+- 本仓库（GitHub `Andy1024L/daka`，本地目录 `C:\1.个人开发\12_daka`）是 `https://6668080.xyz` 唯一维护的生产源码，后端使用 EdgeOne KV。旧 Supabase 仓库和本地副本已删除。
+- 整理、归档或恢复项目时先读取 `README.md` 的部署与备份说明；Git 仓库不包含云端 KV 数据、手机本地记录和私密环境配置。
 - 应用走“本地优先 + 云端同步”思路：界面和历史记录应尽量先从本地缓存读取，EdgeOne KV 云端同步可以慢一点，但不能阻塞基础操作手感。
 - 用户主要在手机端使用，尤其关注 iPhone 大屏上的一屏利用率、点击跟手程度和离线/弱网体验。
 
@@ -96,7 +97,7 @@
 ## 提交与部署
 
 - 用户偏好直接推送到 GitHub 的 `main` 分支，不需要创建 PR。
-- EdgeOne Makers 项目 `daka-kv` 绑定 GitHub `Andy1024L/daka-kv`；推送 `main` 后等待 EdgeOne 自动构建，并读取线上 `/version.json` 和 API 验证部署完成。该项目为 `Github` 类型，不能用 `edgeone makers deploy` 直接上传目录或 ZIP。
+- EdgeOne Makers 的现有项目仍名为 `daka-kv`（项目 ID `makers-kapdb028mmbi`），已核实关联 GitHub `Andy1024L/daka`；仓库更名不代表云端项目、KV 命名空间或域名需要重建。推送 `main` 后核对 EdgeOne 构建结果，再读取线上 `/version.json` 和 API 验证部署完成。该项目为 `Github` 类型，不能用 `edgeone makers deploy` 直接上传目录或 ZIP。
 - `6668080.xyz` 的 HTTPS 使用 EdgeOne「申请免费证书 + 自动验证」，依赖 CNAME 持续正确指向 EdgeOne，由平台自动续签和部署。所有端同时同步失败时，先检查 TLS 证书有效期及浏览器 `ERR_CERT_DATE_INVALID`，不要清缓存、忽略证书错误或把各端缓存强行互相覆盖。
 - 不要无故创建长期分支；临时分支用完要保持仓库干净。
 - 推送前检查：

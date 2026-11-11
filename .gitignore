@@ -8,13 +8,13 @@ __v0_jsx-dev-runtime.ts
 next.user-config.*
 
 # Environment variables
-.env*.local
+.env*
+!.env.example
 
 # Common ignores
 node_modules
 .next/
 .DS_Store
-.vercel
 *.log
 *.xlsx
 tsconfig.tsbuildinfo
@@ -24,7 +24,5 @@ tsconfig.tsbuildinfo
 pnpm-lock.yaml
 
 # Tencent Cloud EdgeOne
-.env
 .edgeone/*
 .tef_dist/*
-  
